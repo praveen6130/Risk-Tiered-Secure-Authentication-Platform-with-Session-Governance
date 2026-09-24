@@ -528,29 +528,78 @@ export function handleMockRequest(url: string, method: string = 'GET', data?: an
 
   // 19. /admin/sessions/revoke
   if (cleanUrl === '/admin/sessions/revoke') {
-    const ids = data?.session_ids || [];
+    const targetIds = (data?.session_ids || []).map((x: any) => String(x));
+    let revokedCount = 0;
     db.sessions.forEach(s => {
-      if (ids.includes(s.id)) {
+      if (targetIds.includes(String(s.id))) {
         s.status = 'revoked';
+        s.revoked_at = new Date().toISOString();
         s.revoked_reason = data?.reason || 'Admin revoked';
+        revokedCount++;
       }
     });
+    db.auditLogs.unshift({
+      id: db.auditLogs.length + 1,
+      action: 'session_revoked',
+      description: `Session(s) revoked by administrator: ${data?.reason || 'Admin revoked'}`,
+      ip_address: '127.0.0.1 (Netlify)',
+      user_agent: navigator.userAgent,
+      risk_score: 0.1,
+      risk_tier: 'low',
+      metadata: { session_ids: data?.session_ids },
+      created_at: new Date().toISOString(),
+    });
     saveData(db);
-    return ok({ message: 'Sessions revoked' });
+    return ok({ message: 'Sessions revoked', revoked: revokedCount });
   }
 
-  // 20. /admin/users/:id/revoke-all
-  const revokeAllUserMatch = cleanUrl.match(/^\/admin\/users\/(\d+)\/revoke-all$/);
+  // 20. /admin/users/:id/revoke-all or /admin/users/:id/revoke
+  const revokeAllUserMatch = cleanUrl.match(/^\/admin\/users\/(\d+)\/(revoke-all|revoke)$/);
   if (revokeAllUserMatch) {
-    const uid = parseInt(revokeAllUserMatch[1], 10);
+    const uid = String(revokeAllUserMatch[1]);
+    let revokedCount = 0;
     db.sessions.forEach(s => {
-      if (s.user_id === uid) {
+      if (String(s.user_id) === uid) {
         s.status = 'revoked';
+        s.revoked_at = new Date().toISOString();
         s.revoked_reason = data?.reason || 'Admin revoked all user sessions';
+        revokedCount++;
       }
     });
+    const targetUser = db.users.find(u => String(u.id) === uid);
+    if (targetUser && !targetUser.is_superuser) {
+      targetUser.is_active = false;
+    }
+    db.auditLogs.unshift({
+      id: db.auditLogs.length + 1,
+      action: 'user_revoked',
+      description: `All sessions revoked for user #${uid} by administrator`,
+      ip_address: '127.0.0.1 (Netlify)',
+      user_agent: navigator.userAgent,
+      risk_score: 0.1,
+      risk_tier: 'low',
+      metadata: { user_id: uid },
+      created_at: new Date().toISOString(),
+    });
     saveData(db);
-    return ok({ message: 'All user sessions revoked' });
+    return ok({ message: 'All user sessions revoked', revoked: revokedCount });
+  }
+
+  // 21. /admin/sessions/:id (detail)
+  const sessionDetailMatch = cleanUrl.match(/^\/admin\/sessions\/(\d+)$/);
+  if (sessionDetailMatch) {
+    const sid = String(sessionDetailMatch[1]);
+    const s = db.sessions.find(sess => String(sess.id) === sid);
+    if (s) {
+      const u = db.users.find(user => String(user.id) === String(s.user_id));
+      const audits = db.auditLogs.filter(a => String((a as any).session_id) === sid);
+      return ok({
+        ...s,
+        user: u || null,
+        audit_logs: audits,
+      });
+    }
+    return notFound('Session not found');
   }
 
   // 21. MFA setup / verify / disable

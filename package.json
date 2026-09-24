@@ -1,0 +1,10 @@
+{
+  "name": "risk-tiered-secure-auth-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Risk-Tiered Secure Authentication Platform with Session Governance",
+  "scripts": {
+    "build": "npm --prefix frontend run build",
+    "test": "npm --prefix frontend test -- --run"
+  }
+}

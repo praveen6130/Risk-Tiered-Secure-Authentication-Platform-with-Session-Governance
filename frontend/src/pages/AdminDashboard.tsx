@@ -117,10 +117,8 @@ export function AdminDashboard() {
   };
 
   const handleRevokeSelected = () => {
-    const reason = prompt('Reason for revocation:');
-    if (reason) {
-      revokeMutation.mutate({ ids: selectedSessions, reason });
-    }
+    if (selectedSessions.length === 0) return;
+    revokeMutation.mutate({ ids: selectedSessions, reason: 'Admin bulk revocation' });
   };
 
   const handleViewDetail = async (session: Session) => {
@@ -358,11 +356,10 @@ export function AdminDashboard() {
                                   size="sm"
                                   className="h-8 px-2.5 text-xs font-semibold"
                                   title={`Revoke Session #${session.id}`}
+                                  disabled={revokeMutation.isPending}
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    if (window.confirm(`Revoke session #${session.id} for User #${session.user_id}?`)) {
-                                      revokeMutation.mutate({ ids: [session.id], reason: 'Admin revoked session' });
-                                    }
+                                    revokeMutation.mutate({ ids: [session.id], reason: 'Admin revoked session' });
                                   }}
                                 >
                                   <Trash2 className="h-3.5 w-3.5 mr-1" />
@@ -571,10 +568,8 @@ function SessionDetailModal({
             variant="destructive"
             size="sm"
             onClick={() => {
-              if (window.confirm(`Are you sure you want to revoke ALL sessions for User #${session.user_id}?`)) {
-                onRevokeUser(session.user_id);
-                onClose();
-              }
+              onRevokeUser(session.user_id);
+              onClose();
             }}
           >
             <Shield className="h-4 w-4 mr-1.5" />
