@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, Literal
+from typing import Optional, Literal, Union, Any
 from pydantic import BaseModel, EmailStr, Field, ConfigDict, AliasChoices
 from app.models.models import RiskTier, SessionStatus
 
@@ -32,7 +32,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str = Field(min_length=8, max_length=128)
-    device_fingerprint: Optional[DeviceFingerprintCreate] = None
+    device_fingerprint: Optional[Union[DeviceFingerprintCreate, dict]] = None
 
 
 class UserResponse(UserBase):
@@ -53,12 +53,13 @@ class Token(BaseModel):
     expires_in: int
     mfa_required: bool = False
     session_id: Optional[str] = None
+    step_up_type: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
-    device_fingerprint: Optional[DeviceFingerprintCreate] = None
+    device_fingerprint: Optional[Union[DeviceFingerprintCreate, dict]] = None
     remember_device: bool = False
 
 

@@ -81,8 +81,9 @@ export async function getDeviceFingerprint(): Promise<object> {
   };
 }
 
-export function getRiskTierColor(tier: string): string {
-  switch (tier) {
+export function getRiskTierColor(tier?: string | null): string {
+  const t = (tier || '').toLowerCase();
+  switch (t) {
     case 'low': return 'text-risk-low';
     case 'medium': return 'text-risk-medium';
     case 'high': return 'text-risk-high';
@@ -91,8 +92,9 @@ export function getRiskTierColor(tier: string): string {
   }
 }
 
-export function getRiskTierBg(tier: string): string {
-  switch (tier) {
+export function getRiskTierBg(tier?: string | null): string {
+  const t = (tier || '').toLowerCase();
+  switch (t) {
     case 'low': return 'bg-risk-low/10 border-risk-low/20';
     case 'medium': return 'bg-risk-medium/10 border-risk-medium/20';
     case 'high': return 'bg-risk-high/10 border-risk-high/20';

@@ -135,6 +135,17 @@ export const authApi = {
 
   getUserAuditLogs: (params?: { limit?: number }) =>
     api.get<AuditLog[]>('/auth/audit-logs', { params }),
+
+  getPendingApprovals: () => api.get<Session[]>('/auth/pending-approvals'),
+
+  approvePendingSession: (sessionId: number) =>
+    api.post(`/auth/pending-approvals/${sessionId}/approve`),
+
+  denyPendingSession: (sessionId: number) =>
+    api.post(`/auth/pending-approvals/${sessionId}/deny`),
+
+  getDemoOTP: (secret?: string) =>
+    api.get<{ code: string; seconds_remaining: number; secret: string }>('/auth/demo-otp', { params: { secret } }),
 };
 
 export const adminApi = {

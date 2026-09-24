@@ -33,6 +33,7 @@ export type SessionStatus = 'active' | 'revoked' | 'expired' | 'step_up_required
 
 export interface Session {
   id: number;
+  user_id: number;
   device_fingerprint_id: number | null;
   ip_address: string;
   user_agent: string;

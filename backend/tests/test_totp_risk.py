@@ -58,7 +58,9 @@ class TestRiskEngine:
         # Mock known trusted device
         from unittest.mock import patch
         with patch.object(risk_engine, '_check_device', return_value=(True, type('obj', (object,), {'is_trusted': True})())), \
-             patch.object(risk_engine, '_get_last_successful_session', return_value=None):
+             patch.object(risk_engine, '_get_last_successful_session', return_value=None), \
+             patch.object(risk_engine, '_get_failed_login_streak', return_value=0), \
+             patch.object(risk_engine, '_count_recent_logins', return_value=0):
             result = await risk_engine.assess_login_risk(
                 user=user,
                 ip="192.168.1.1",

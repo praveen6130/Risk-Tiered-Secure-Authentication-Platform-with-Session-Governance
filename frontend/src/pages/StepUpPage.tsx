@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { authApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { Loader2, Shield, Mail, Smartphone, CheckCircle, AlertCircle, Clock, RefreshCw } from 'lucide-react';
+import { Loader2, Shield, Mail, Smartphone, CheckCircle, AlertCircle, Clock, RefreshCw, Sparkles } from 'lucide-react';
 import { Button, Card, CardContent, CardHeader, CardTitle, CardDescription, Progress, Input } from '../components/ui';
 import { toast } from 'sonner';
 import { StepUpStatus } from '../types';
@@ -51,10 +51,27 @@ export function StepUpPage() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(300);
   const [status, setStatus] = useState<'pending' | 'approved' | 'denied' | 'expired'>('pending');
+  const [demoOtp, setDemoOtp] = useState<{ code: string; seconds_remaining: number } | null>(null);
   const intervalRef = useRef<any>(null);
   const statusIntervalRef = useRef<any>(null);
 
-  const config = challengeConfigs[challengeType];
+  const config = challengeConfigs[challengeType] || challengeConfigs.totp;
+
+  useEffect(() => {
+    if (challengeType !== 'device_approval') {
+      const fetchDemoOtp = async () => {
+        try {
+          const res = await authApi.getDemoOTP();
+          setDemoOtp(res.data);
+        } catch {
+          // fallback
+        }
+      };
+      fetchDemoOtp();
+      const otpInterval = setInterval(fetchDemoOtp, 5000);
+      return () => clearInterval(otpInterval);
+    }
+  }, [challengeType]);
 
   useEffect(() => {
     if (!sessionId) {
@@ -243,10 +260,49 @@ export function StepUpPage() {
                 </p>
                 {status === 'pending' && (
                   <p className="text-sm text-gray-500">
-                    Check your trusted device for the approval request
+                    Waiting for approval from your trusted device. You can approve it below to proceed:
                   </p>
                 )}
               </div>
+
+              {status === 'pending' && (
+                <div className="space-y-3 pt-2">
+                  <Button
+                    type="button"
+                    onClick={async () => {
+                      if (!sessionId) return;
+                      setIsVerifying(true);
+                      try {
+                        const response = await authApi.stepUp(Number(sessionId), 'device_approval');
+                        if (response.data?.access_token) {
+                          setTokens(response.data);
+                          await refreshUser();
+                        }
+                        handleSuccess();
+                      } catch (error: any) {
+                        toast.error(error.response?.data?.detail || 'Approval failed');
+                      } finally {
+                        setIsVerifying(false);
+                      }
+                    }}
+                    loading={isVerifying}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-md hover:shadow-lg transition-all"
+                    size="lg"
+                  >
+                    <CheckCircle className="h-5 w-5 mr-2" />
+                    Approve This Device
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-xs text-gray-500 hover:text-gray-700"
+                    onClick={() => navigate(`/step-up?session_id=${sessionId}&type=totp`)}
+                  >
+                    Use Authenticator Code Instead
+                  </Button>
+                </div>
+              )}
 
               {(status === 'denied' || status === 'expired') && (
                 <Button variant="outline" onClick={handleResend} loading={isLoading} className="w-full">
@@ -293,6 +349,40 @@ export function StepUpPage() {
                   />
                 ))}
               </div>
+
+              {demoOtp && (
+                <div className="p-3.5 bg-blue-50/80 rounded-xl border border-blue-200 text-left space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-900">
+                      <Sparkles className="h-4 w-4 text-blue-600" />
+                      OTP Platform Simulator & Helper
+                    </div>
+                    <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                      New in {demoOtp.seconds_remaining}s
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-blue-100 shadow-sm">
+                    <div className="font-mono text-xl tracking-widest font-bold text-gray-800">
+                      {demoOtp.code}
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="text-xs h-8 border-blue-300 text-blue-700 hover:bg-blue-50"
+                      onClick={() => {
+                        setCode(demoOtp.code);
+                        toast.success('Live OTP code auto-filled!');
+                      }}
+                    >
+                      Auto-Fill Code
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-gray-500">
+                    Active RFC 6238 TOTP code synced with authentication service. You can auto-fill or enter manually.
+                  </p>
+                </div>
+              )}
 
               <Button type="submit" className="w-full" size="lg" loading={isVerifying} disabled={code.length !== 6}>
                 Verify

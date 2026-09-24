@@ -76,23 +76,35 @@ export function RegisterPage() {
     setErrors({});
     
     try {
+      const fpPayload = fingerprint ? { fingerprint, user_agent: navigator.userAgent } : undefined;
       await authApi.register({
         email: data.email,
         password: data.password,
         full_name: data.fullName || undefined,
-        device_fingerprint: fingerprint || undefined,
+        device_fingerprint: fpPayload,
       });
       
       toast.success('Account created successfully!');
       
-      const tokenData = await login(data.email, data.password, fingerprint || undefined, data.rememberDevice);
+      const tokenData = await login(data.email, data.password, fpPayload, data.rememberDevice);
       if (tokenData?.mfa_required) {
-        navigate(`/step-up?session_id=${tokenData.session_id}&type=totp`);
+        const sType = (tokenData as any)?.step_up_type || 'totp';
+        navigate(`/step-up?session_id=${tokenData.session_id}&type=${sType}`);
       } else {
         navigate('/dashboard');
       }
     } catch (error: any) {
-      const message = error.response?.data?.detail || error.message || 'Registration failed. Please try again.';
+      const detail = error.response?.data?.detail;
+      let message = 'Registration failed. Please try again.';
+      if (typeof detail === 'string') {
+        message = detail;
+      } else if (Array.isArray(detail)) {
+        message = detail.map((d: any) => d.msg || (typeof d === 'string' ? d : JSON.stringify(d))).join(', ');
+      } else if (detail && typeof detail === 'object') {
+        message = JSON.stringify(detail);
+      } else if (error.message) {
+        message = error.message;
+      }
       setErrors({ form: message });
       toast.error(message);
     } finally {

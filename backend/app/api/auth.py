@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Cookie, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlmodel import select
@@ -55,7 +56,7 @@ async def get_current_user(
             raise HTTPException(status_code=401, detail="User not found or inactive")
         
         sess_stmt = select(Session).where(
-            Session.id == session_id,
+            Session.id == int(session_id),
             Session.user_id == user.id,
             Session.status == SessionStatus.ACTIVE,
         )
@@ -82,7 +83,7 @@ async def get_current_session(
     
     async with get_session() as session:
         stmt = select(Session).where(
-            Session.id == session_id,
+            Session.id == int(session_id),
             Session.status == SessionStatus.ACTIVE,
         )
         result = await session.exec(stmt)
@@ -415,20 +416,134 @@ async def step_up(
 @router.get("/step-up/status/{session_id}", response_model=StepUpStatusResponse)
 async def step_up_status(
     session_id: int,
+):
+    async with get_session_context() as session:
+        stmt = select(Session).where(Session.id == session_id)
+        result = await session.exec(stmt)
+        sess = result.first()
+        
+        if not sess:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        return StepUpStatusResponse(
+            session_id=str(sess.id),
+            status="pending" if sess.status == SessionStatus.STEP_UP_REQUIRED else "approved",
+            challenge_type="unknown",
+            expires_at=sess.expires_at,
+        )
+
+
+@router.get("/pending-approvals", response_model=list[SessionResponse])
+async def get_pending_approvals(
     user: User = Depends(get_current_user),
 ):
-    sessions = await auth_service.get_user_sessions(user.id)
-    sess = next((s for s in sessions if s.id == session_id), None)
+    async with get_session_context() as session:
+        stmt = (
+            select(Session)
+            .where(
+                Session.user_id == user.id,
+                Session.status == SessionStatus.STEP_UP_REQUIRED,
+            )
+            .order_by(Session.created_at.desc())
+        )
+        result = await session.exec(stmt)
+        return list(result.all())
+
+
+@router.post("/pending-approvals/{session_id}/approve")
+async def approve_pending_session(
+    session_id: int,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    client_ip = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+    async with get_session_context() as session:
+        stmt = select(Session).where(
+            Session.id == session_id,
+            Session.user_id == user.id,
+        )
+        result = await session.exec(stmt)
+        sess = result.first()
+        if not sess:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        sess.mfa_verified = True
+        sess.status = SessionStatus.ACTIVE
+        sess.step_up_completed = True
+        session.add(sess)
+        await session.commit()
+        
+        await audit_logger.log(
+            action="device_approved",
+            description=f"Session #{sess.id} approved from trusted device",
+            ip_address=client_ip,
+            user_agent=user_agent,
+            user_id=user.id,
+        )
+        return {"status": "approved", "session_id": sess.id}
+
+
+@router.post("/pending-approvals/{session_id}/deny")
+async def deny_pending_session(
+    session_id: int,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    client_ip = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+    async with get_session_context() as session:
+        stmt = select(Session).where(
+            Session.id == session_id,
+            Session.user_id == user.id,
+        )
+        result = await session.exec(stmt)
+        sess = result.first()
+        if not sess:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        sess.status = SessionStatus.BLOCKED
+        sess.revoked_reason = "Denied by user from trusted device"
+        session.add(sess)
+        await session.commit()
+        
+        await audit_logger.log(
+            action="device_denied",
+            description=f"Session #{sess.id} blocked by user",
+            ip_address=client_ip,
+            user_agent=user_agent,
+            user_id=user.id,
+            risk_tier=RiskTier.HIGH,
+        )
+        return {"status": "denied", "session_id": sess.id}
+
+
+@router.get("/demo-otp")
+async def get_demo_otp(
+    secret: Optional[str] = "JBSWY3DPEHPK3PXP",
+):
+    import pyotp
+    import time
+    sec = secret or "JBSWY3DPEHPK3PXP"
+    totp = pyotp.TOTP(sec)
+    now = time.time()
+    seconds_remaining = 30 - int(now % 30)
+    code = totp.now()
     
-    if not sess:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    return StepUpStatusResponse(
-        session_id=str(sess.id),
-        status="pending" if sess.status == SessionStatus.STEP_UP_REQUIRED else "approved",
-        challenge_type="unknown",
-        expires_at=sess.expires_at,
+    from app.utils.totp import print_terminal_otp
+    print_terminal_otp(
+        email="Live Verification / OTP Platform",
+        code=code,
+        reason="Active TOTP Sync",
+        seconds_remaining=seconds_remaining,
+        deduplicate=True,
     )
+    
+    return {
+        "code": code,
+        "seconds_remaining": seconds_remaining,
+        "secret": sec,
+    }
 
 
 from app.models.models import RiskTier

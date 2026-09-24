@@ -10,25 +10,27 @@ interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
 
 export const Badge = forwardRef<HTMLSpanElement, BadgeProps>(
   ({ className, variant = 'default', riskTier, status, children, ...props }, ref) => {
-    if (variant === 'risk' && riskTier) {
+    const rTier = (riskTier || '').toLowerCase();
+    if (variant === 'risk' && rTier) {
       return (
         <span
           ref={ref}
           className={cn(
             'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
-            getRiskTierBg(riskTier),
-            getRiskTierColor(riskTier),
+            getRiskTierBg(rTier),
+            getRiskTierColor(rTier),
             className
           )}
           {...props}
         >
-          {riskTier.charAt(0).toUpperCase() + riskTier.slice(1)}
+          {rTier.charAt(0).toUpperCase() + rTier.slice(1)}
         </span>
       );
     }
 
-    if (variant === 'status' && status) {
-      const statusStyles = {
+    const sStatus = (status || '').toLowerCase();
+    if (variant === 'status' && sStatus) {
+      const statusStyles: Record<string, string> = {
         active: 'bg-green-100 text-green-800',
         revoked: 'bg-red-100 text-red-800',
         expired: 'bg-gray-100 text-gray-800',
@@ -38,10 +40,10 @@ export const Badge = forwardRef<HTMLSpanElement, BadgeProps>(
       return (
         <span
           ref={ref}
-          className={cn('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium', statusStyles[status], className)}
+          className={cn('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium', statusStyles[sStatus] || 'bg-gray-100 text-gray-800', className)}
           {...props}
         >
-          {status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+          {sStatus.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
         </span>
       );
     }

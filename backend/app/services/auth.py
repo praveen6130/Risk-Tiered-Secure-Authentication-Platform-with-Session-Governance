@@ -24,7 +24,7 @@ from app.utils.security import (
     verify_backup_code,
     verify_password,
 )
-from app.utils.totp import TOTPManager, verify_totp
+from app.utils.totp import TOTPManager, verify_totp, print_terminal_otp
 
 
 class AuthService:
@@ -56,9 +56,14 @@ class AuthService:
             await session.refresh(user)
             
             if device_fingerprint:
+                fp_dict = (
+                    device_fingerprint.get("fingerprint", device_fingerprint)
+                    if isinstance(device_fingerprint, dict)
+                    else getattr(device_fingerprint, "fingerprint", device_fingerprint)
+                )
                 await get_or_create_device(
                     user.id,
-                    device_fingerprint.fingerprint,
+                    fp_dict,
                     user_agent,
                 )
             
@@ -100,7 +105,10 @@ class AuthService:
             
             device_fp = None
             if request.device_fingerprint:
-                device_fp = request.device_fingerprint.fingerprint
+                if isinstance(request.device_fingerprint, dict):
+                    device_fp = request.device_fingerprint.get("fingerprint", request.device_fingerprint)
+                else:
+                    device_fp = getattr(request.device_fingerprint, "fingerprint", request.device_fingerprint)
             
             risk_assessment = await risk_engine.assess_login_risk(
                 user, ip, user_agent, device_fp or {}, geo
@@ -110,13 +118,21 @@ class AuthService:
             refresh_token = generate_refresh_token()
             
             device = None
-            if request.device_fingerprint:
+            if device_fp:
                 device = await get_or_create_device(
                     user.id,
-                    request.device_fingerprint.fingerprint,
+                    device_fp,
                     user_agent,
                     "Auto-registered" if request.remember_device else None,
                 )
+                if request.remember_device and device:
+                    device.is_trusted = True
+                    session.add(device)
+            
+            # Require MFA if user enabled MFA or if critical risk device approval is required
+            requires_step_up = user.mfa_enabled or (
+                risk_assessment.requires_step_up and (user.mfa_enabled or risk_assessment.step_up_type == "device_approval")
+            )
             
             new_session = Session(
                 user_id=user.id,
@@ -130,8 +146,8 @@ class AuthService:
                 risk_score=risk_assessment.risk_score,
                 risk_tier=risk_assessment.risk_tier,
                 risk_factors=risk_assessment.risk_factors,
-                status=SessionStatus.STEP_UP_REQUIRED if risk_assessment.requires_step_up else SessionStatus.ACTIVE,
-                mfa_verified=not risk_assessment.requires_step_up and not user.mfa_enabled,
+                status=SessionStatus.STEP_UP_REQUIRED if requires_step_up else SessionStatus.ACTIVE,
+                mfa_verified=not requires_step_up,
                 expires_at=datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
             )
             session.add(new_session)
@@ -144,8 +160,20 @@ class AuthService:
             
             await risk_engine.update_user_profile(user, datetime.now(timezone.utc))
             
-            if user.mfa_enabled or risk_assessment.requires_step_up:
+            if requires_step_up:
                 await audit_logger.log_session_created(user, new_session, ip, user_agent)
+                step_up_type = risk_assessment.step_up_type or ("totp" if user.mfa_enabled else "device_approval")
+                
+                # Print active OTP on terminal
+                totp_sec = user.totp_secret or "JBSWY3DPEHPK3PXP"
+                totp_mgr = TOTPManager(totp_sec)
+                print_terminal_otp(
+                    email=user.email,
+                    code=totp_mgr.current_code(),
+                    reason=f"Login Step-Up Challenge ({step_up_type})",
+                    seconds_remaining=totp_mgr.time_remaining(),
+                )
+                
                 return Token(
                     access_token="",
                     refresh_token="",
@@ -153,6 +181,7 @@ class AuthService:
                     expires_in=0,
                     mfa_required=True,
                     session_id=str(new_session.id),
+                    step_up_type=step_up_type,
                 )
             
             access_token = create_access_token({"sub": str(user.id), "session_id": new_session.id})
@@ -180,6 +209,13 @@ class AuthService:
             user.backup_codes_hash = backup_codes_hash
             session.add(user)
             await session.commit()
+            
+        print_terminal_otp(
+            email=user.email,
+            code=totp.current_code(),
+            reason="MFA Initial Setup / Activation",
+            seconds_remaining=totp.time_remaining(),
+        )
         
         return {
             "secret": secret,
@@ -417,6 +453,16 @@ class AuthService:
             user_stmt = select(User).where(User.id == sess.user_id)
             user_result = await session.exec(user_stmt)
             user = user_result.first()
+            
+            if not code and challenge_type in ("totp", "email_otp"):
+                sec = (user.totp_secret if user else None) or "JBSWY3DPEHPK3PXP"
+                mgr = TOTPManager(sec)
+                print_terminal_otp(
+                    email=user.email if user else "user",
+                    code=mgr.current_code(),
+                    reason=f"Step-Up Challenge Code ({challenge_type})",
+                    seconds_remaining=mgr.time_remaining(),
+                )
             
             success = False
             if challenge_type == "totp" and code and user.totp_secret:

@@ -26,6 +26,25 @@ def fake_dt(start_date="-30d", end_date="now") -> datetime:
 async def seed_users() -> list[User]:
     users = []
     async with async_session() as session:
+        # Default Superuser requested by user
+        sudo_admin = User(
+            email="sudouser@gmail.com",
+            password_hash=hash_password("supremeuser"),
+            full_name="Supreme Admin",
+            is_active=True,
+            is_superuser=True,
+            mfa_enabled=False,
+            totp_secret="JBSWY3DPEHPK3PXP",
+            risk_profile={
+                "typical_login_hours": list(range(24)),
+                "typical_login_days": list(range(7)),
+            },
+            created_at=fake_dt("-30d", "-1d"),
+            last_login_at=fake_dt("-7d", "now"),
+        )
+        session.add(sudo_admin)
+        users.append(sudo_admin)
+
         for i in range(10):
             email = f"user{i+1}@example.com"
             password_hash = hash_password("Password123!")
@@ -35,7 +54,7 @@ async def seed_users() -> list[User]:
                 password_hash=password_hash,
                 full_name=fake.name(),
                 is_active=True,
-                is_superuser=(i == 0),
+                is_superuser=False,
                 mfa_enabled=(i < 5),
                 totp_secret="JBSWY3DPEHPK3PXP" if i < 5 else None,
                 backup_codes_hash="\n".join([hash_password(f"BACKUP{i}{j}") for j in range(10)]) if i < 5 else None,

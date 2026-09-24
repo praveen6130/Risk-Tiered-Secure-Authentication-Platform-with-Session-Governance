@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { LogOut, Users, Shield, Activity, Zap, Globe, Trash2, ChevronDown, ChevronUp, RefreshCw, Settings, Bell, LayoutDashboard } from 'lucide-react';
+import { LogOut, Users, Shield, Activity, Zap, Globe, Trash2, ChevronDown, ChevronUp, RefreshCw, Settings, Bell, LayoutDashboard, CheckCircle2, XCircle, AlertCircle, Laptop } from 'lucide-react';
 import { authApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Session, User, AuditLog, RiskTier, SessionStatus } from '../types';
@@ -20,6 +20,12 @@ export function DashboardPage() {
   const { data: sessionsData, isLoading: sessionsLoading, refetch: refetchSessions } = useQuery({
     queryKey: ['userSessions'],
     queryFn: () => authApi.getSessions(),
+  });
+
+  const { data: pendingApprovalsData, refetch: refetchPending } = useQuery({
+    queryKey: ['pendingApprovals'],
+    queryFn: () => authApi.getPendingApprovals(),
+    refetchInterval: 3000,
   });
 
   const { data: auditData } = useQuery({
@@ -48,7 +54,28 @@ export function DashboardPage() {
     onError: (error: any) => toast.error(error.response?.data?.detail || 'Failed to revoke all sessions'),
   });
 
+  const approveMutation = useMutation({
+    mutationFn: (sessionId: number) => authApi.approvePendingSession(sessionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pendingApprovals'] });
+      queryClient.invalidateQueries({ queryKey: ['userSessions'] });
+      toast.success('Login approved! The new device can now proceed.');
+    },
+    onError: (error: any) => toast.error(error.response?.data?.detail || 'Failed to approve session'),
+  });
+
+  const denyMutation = useMutation({
+    mutationFn: (sessionId: number) => authApi.denyPendingSession(sessionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pendingApprovals'] });
+      queryClient.invalidateQueries({ queryKey: ['userSessions'] });
+      toast.error('Login denied and blocked.');
+    },
+    onError: (error: any) => toast.error(error.response?.data?.detail || 'Failed to deny session'),
+  });
+
   const sessions = sessionsData?.data || [];
+  const pendingApprovals = pendingApprovalsData?.data || [];
   const activeSessions = sessions.filter(s => s.status === 'active');
   const riskCounts = sessions.reduce((acc, s) => {
     acc[s.risk_tier] = (acc[s.risk_tier] || 0) + 1;
@@ -100,6 +127,81 @@ export function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           className="space-y-6"
         >
+          {pendingApprovals.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-2xl border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 p-6 shadow-sm"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500 text-white shadow">
+                  <Bell className="h-5 w-5 animate-bounce" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    Pending Device Login Approval Requests ({pendingApprovals.length})
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    A sign-in attempt requires verification from this trusted session before access is granted.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {pendingApprovals.map((sess) => (
+                  <div
+                    key={sess.id}
+                    className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-xl bg-white border border-amber-200 shadow-sm"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="p-2.5 rounded-lg bg-amber-100 text-amber-700">
+                        <Laptop className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-gray-900">
+                            {sess.city || 'Unknown Location'}, {sess.country || 'Unknown'}
+                          </span>
+                          <Badge variant="risk" riskTier={sess.risk_tier} className="text-xs" />
+                          <Badge variant="outline" className="text-xs font-mono">
+                            Session #{sess.id}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1 font-mono truncate max-w-md">
+                          IP: {sess.ip_address} • {sess.user_agent}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Requested {formatRelativeTime(sess.created_at)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 self-end md:self-center">
+                      <Button
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+                        loading={approveMutation.isPending}
+                        onClick={() => approveMutation.mutate(sess.id)}
+                      >
+                        <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                        Approve Login
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        loading={denyMutation.isPending}
+                        onClick={() => denyMutation.mutate(sess.id)}
+                      >
+                        <XCircle className="h-4 w-4 mr-1.5" />
+                        Deny & Block
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardContent className="p-6">

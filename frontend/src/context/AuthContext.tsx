@@ -69,26 +69,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string, deviceFingerprint?: object, rememberDevice?: boolean): Promise<Token | undefined> => {
-    const response = await authApi.login({ email, password, device_fingerprint: deviceFingerprint, remember_device: rememberDevice });
-    const tokenData = response.data;
-    
-    if (tokenData.mfa_required) {
-      setToken(tokenData);
-      localStorage.setItem('mfa_session_id', tokenData.session_id || '');
-      return tokenData;
-    }
-    
-    setToken(tokenData);
-    localStorage.setItem('access_token', tokenData.access_token);
-    localStorage.setItem('refresh_token', tokenData.refresh_token);
-    
+    setIsLoading(true);
     try {
-      const userRes = await authApi.getMe();
-      setUser(userRes.data);
-    } catch {
-      // If fetching user profile fails
+      const response = await authApi.login({ email, password, device_fingerprint: deviceFingerprint, remember_device: rememberDevice });
+      const tokenData = response.data;
+      
+      if (tokenData.mfa_required) {
+        setToken(tokenData);
+        localStorage.setItem('mfa_session_id', tokenData.session_id || '');
+        return tokenData;
+      }
+      
+      setToken(tokenData);
+      localStorage.setItem('access_token', tokenData.access_token);
+      localStorage.setItem('refresh_token', tokenData.refresh_token);
+      
+      try {
+        const userRes = await authApi.getMe();
+        setUser(userRes.data);
+      } catch (e) {
+        console.error('Failed to get user profile after login:', e);
+      }
+      return tokenData;
+    } catch (err) {
+      clearAuth();
+      throw err;
+    } finally {
+      setIsLoading(false);
     }
-    return tokenData;
   };
 
   const register = async (email: string, password: string, fullName?: string, deviceFingerprint?: object) => {
@@ -114,10 +122,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearAuth();
   };
 
-  const setTokens = (newToken: Token) => {
+  const setTokens = async (newToken: Token) => {
     setToken(newToken);
     localStorage.setItem('access_token', newToken.access_token);
     localStorage.setItem('refresh_token', newToken.refresh_token);
+    try {
+      const userRes = await authApi.getMe();
+      setUser(userRes.data);
+    } catch (e) {
+      console.error('Failed to get user profile in setTokens:', e);
+    }
   };
 
   const clearAuth = () => {

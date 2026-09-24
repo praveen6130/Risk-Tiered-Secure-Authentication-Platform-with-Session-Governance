@@ -117,7 +117,7 @@ def run_bruteforce():
     return res.returncode
 
 
-def run_services():
+def run_services(tunnel: bool = False):
     project_root, backend_dir, frontend_dir, python_exe = get_paths()
     ensure_env(backend_dir)
     
@@ -171,24 +171,45 @@ def run_services():
     
     # Start Frontend
     print("[4/4] Starting Vite Frontend on http://localhost:5173...")
-    npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
+    npm_cmd = "npm run dev" if sys.platform == "win32" else ["npm", "run", "dev"]
     frontend_proc = subprocess.Popen(
-        [npm_cmd, "run", "dev", "--", "--host"],
+        npm_cmd,
         cwd=frontend_dir,
         shell=(sys.platform == "win32")
     )
     processes.append(("Frontend", frontend_proc))
     
+    if tunnel:
+        time.sleep(1)
+        print("[+] Starting Live Mobile Tunnel (bypasses all Windows Firewall restrictions)...")
+        tunnel_proc = subprocess.Popen("npx localtunnel --port 5173", shell=True)
+        processes.append(("Tunnel", tunnel_proc))
+    
+    import socket
+    local_ips = []
+    try:
+        hostname = socket.gethostname()
+        for ip in socket.gethostbyname_ex(hostname)[2]:
+            if not ip.startswith("127."):
+                local_ips.append(ip)
+    except Exception:
+        pass
+
     print("\n" + "=" * 65)
     print("[READY] All services up and running!")
     print("=" * 65)
     print("  -> Web Dashboard:    http://localhost:5173")
+    for ip in local_ips:
+        if ip.startswith("192.168.137."):
+            print(f"  -> Phone (Hotspot):  http://{ip}:5173   <--- USE THIS ON PHONE")
+        elif not ip.startswith("192.168.56.") and not ip.startswith("172."):
+            print(f"  -> Phone (Wi-Fi):    http://{ip}:5173   <--- USE THIS ON PHONE")
     print("  -> Backend API:      http://localhost:8000")
     print("  -> Swagger Docs:     http://localhost:8000/docs")
     print("=" * 65)
     print("\n[+] Seeded Accounts for Testing:")
-    print("  Admin:  user1@example.com  / Password123! (MFA enabled)")
-    print("  Users:  user2@example.com to user10@example.com / Password123!")
+    print("  Super Admin: sudouser@gmail.com / supremeuser (Full Platform Governance)")
+    print("  Demo Users:  user1@example.com to user10@example.com / Password123!")
     print("\n[*] Press Ctrl+C at any time to gracefully stop all services.")
     print("=" * 65 + "\n")
     
@@ -225,6 +246,7 @@ def main():
     parser.add_argument("--build", action="store_true", help="Build frontend production bundle")
     parser.add_argument("--demo", action="store_true", help="Run demo script")
     parser.add_argument("--bruteforce", action="store_true", help="Run brute force security simulation")
+    parser.add_argument("--tunnel", action="store_true", help="Create public URL for phone access bypassing firewall")
     
     args = parser.parse_args()
     
@@ -239,7 +261,7 @@ def main():
     elif args.bruteforce:
         sys.exit(run_bruteforce())
     else:
-        run_services()
+        run_services(tunnel=args.tunnel)
 
 
 if __name__ == "__main__":

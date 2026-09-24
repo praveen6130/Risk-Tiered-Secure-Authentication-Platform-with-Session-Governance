@@ -74,3 +74,20 @@ class TOTPManager:
     
     def time_remaining(self) -> int:
         return 30 - (int(__import__('time').time()) % 30)
+
+
+_last_printed_code = None
+
+def print_terminal_otp(email: str, code: str, reason: str = "Login Verification", seconds_remaining: int = 30, deduplicate: bool = False):
+    global _last_printed_code
+    if deduplicate and _last_printed_code == code:
+        return
+    _last_printed_code = code
+    border = "=" * 65
+    print(f"\n{border}", flush=True)
+    print(f"  >>> [TERMINAL OTP NOTIFICATION] <<<", flush=True)
+    print(f"  Account:            {email}", flush=True)
+    print(f"  Active 6-Digit OTP: >>>  {code}  <<<", flush=True)
+    print(f"  Purpose:            {reason}", flush=True)
+    print(f"  Validity:           ~{seconds_remaining}s remaining (30-second cycle)", flush=True)
+    print(f"{border}\n", flush=True)

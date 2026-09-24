@@ -49,6 +49,17 @@ export function AdminDashboard() {
     onError: (error: any) => toast.error(error.response?.data?.detail || 'Failed to revoke sessions'),
   });
 
+  const revokeUserMutation = useMutation({
+    mutationFn: ({ userId, reason }: { userId: number; reason: string }) => adminApi.revokeAllUserSessions(userId, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminSessions'] });
+      queryClient.invalidateQueries({ queryKey: ['riskStats'] });
+      setDetailSession(null);
+      toast.success('All sessions for user revoked');
+    },
+    onError: (error: any) => toast.error(error.response?.data?.detail || 'Failed to revoke user sessions'),
+  });
+
   const sessions = useMemo(() => {
     let filtered = sessionsData?.data || [];
     
@@ -389,13 +400,30 @@ export function AdminDashboard() {
         title="Session Details"
         size="xl"
       >
-        {detailSession && <SessionDetailModal session={detailSession} onClose={() => setDetailSession(null)} />}
+        {detailSession && (
+          <SessionDetailModal
+            session={detailSession}
+            onClose={() => setDetailSession(null)}
+            onRevokeSession={(id) => revokeMutation.mutate({ ids: [id], reason: 'Admin revoked session' })}
+            onRevokeUser={(userId) => revokeUserMutation.mutate({ userId, reason: 'Admin revoked entire user access' })}
+          />
+        )}
       </Modal>
     </div>
   );
 }
 
-function SessionDetailModal({ session, onClose }: { session: SessionDetail; onClose: () => void }) {
+function SessionDetailModal({
+  session,
+  onClose,
+  onRevokeSession,
+  onRevokeUser,
+}: {
+  session: SessionDetail;
+  onClose: () => void;
+  onRevokeSession: (sessionId: number) => void;
+  onRevokeUser: (userId: number) => void;
+}) {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
@@ -500,6 +528,40 @@ function SessionDetailModal({ session, onClose }: { session: SessionDetail; onCl
           </div>
         </CardContent>
       </Card>
+
+      <div className="pt-4 border-t border-gray-200 flex flex-wrap items-center justify-between gap-3">
+        <div className="text-xs text-gray-500">
+          User ID: <span className="font-mono font-medium text-gray-700">{session.user_id}</span>
+        </div>
+        <div className="flex gap-2">
+          {session.status === 'active' && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-red-600 border-red-200 hover:bg-red-50"
+              onClick={() => {
+                onRevokeSession(session.id);
+                onClose();
+              }}
+            >
+              <Trash2 className="h-4 w-4 mr-1.5" />
+              Revoke This Session
+            </Button>
+          )}
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => {
+              if (window.confirm(`Are you sure you want to revoke ALL sessions for User #${session.user_id}?`)) {
+                onRevokeUser(session.user_id);
+              }
+            }}
+          >
+            <Shield className="h-4 w-4 mr-1.5" />
+            Revoke User All Access
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
