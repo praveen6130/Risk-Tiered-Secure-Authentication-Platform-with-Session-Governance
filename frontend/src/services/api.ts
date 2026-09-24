@@ -1,5 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { Token, User, Session, SessionDetail, AuditLog, RiskAssessment, GeoIP, MFASetupResponse, StepUpStatus, DeviceFingerprint } from '../types';
+import { handleMockRequest } from './mockBackend';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
@@ -41,9 +42,46 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-    const isAuthEndpoint = originalRequest.url?.includes('/auth/login') || 
-                           originalRequest.url?.includes('/auth/register') || 
-                           originalRequest.url?.includes('/auth/refresh');
+    // Netlify Fallback: If running on a static host where the Python API endpoint returns 404 or network error
+    if (
+      (error.response?.status === 404 || !error.response || error.code === 'ERR_NETWORK') &&
+      originalRequest?.url
+    ) {
+      let parsedData: any = originalRequest.data;
+      if (typeof parsedData === 'string') {
+        try {
+          parsedData = JSON.parse(parsedData);
+        } catch {
+          // ignore
+        }
+      }
+      const mockResult = handleMockRequest(originalRequest.url, originalRequest.method, parsedData);
+      if (mockResult) {
+        if (mockResult.status >= 200 && mockResult.status < 300) {
+          return Promise.resolve({
+            data: mockResult.data,
+            status: mockResult.status,
+            statusText: 'OK',
+            headers: {},
+            config: originalRequest,
+          });
+        } else {
+          return Promise.reject({
+            response: {
+              data: mockResult.data,
+              status: mockResult.status,
+              statusText: 'Error',
+              headers: {},
+              config: originalRequest,
+            },
+          });
+        }
+      }
+    }
+
+    const isAuthEndpoint = originalRequest?.url?.includes('/auth/login') || 
+                           originalRequest?.url?.includes('/auth/register') || 
+                           originalRequest?.url?.includes('/auth/refresh');
 
     if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       if (isRefreshing) {
@@ -68,7 +106,18 @@ api.interceptors.response.use(
           throw new Error('No refresh token');
         }
 
-        const response = await axios.post(`${API_URL}/auth/refresh`, { refresh_token: refreshToken }, { withCredentials: true });
+        let response;
+        try {
+          response = await axios.post(`${API_URL}/auth/refresh`, { refresh_token: refreshToken }, { withCredentials: true });
+        } catch (refreshErr) {
+          const mockRefresh = handleMockRequest('/auth/refresh', 'POST');
+          if (mockRefresh) {
+            response = { data: mockRefresh.data };
+          } else {
+            throw refreshErr;
+          }
+        }
+
         const { access_token, refresh_token } = response.data;
 
         localStorage.setItem('access_token', access_token);
