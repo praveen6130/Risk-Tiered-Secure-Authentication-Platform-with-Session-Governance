@@ -100,28 +100,29 @@ class SessionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    device_fingerprint_id: Optional[int]
+    user_id: Optional[int] = None
+    device_fingerprint_id: Optional[int] = None
     ip_address: str
     user_agent: str
-    country: Optional[str]
-    city: Optional[str]
+    country: Optional[str] = None
+    city: Optional[str] = None
     risk_score: float
     risk_tier: RiskTier
-    risk_factors: dict
+    risk_factors: dict = Field(default_factory=dict)
     status: SessionStatus
     mfa_verified: bool
     step_up_completed: bool
     created_at: datetime
     last_activity_at: datetime
     expires_at: datetime
-    revoked_at: Optional[datetime]
-    revoked_reason: Optional[str]
+    revoked_at: Optional[datetime] = None
+    revoked_reason: Optional[str] = None
 
 
 class SessionDetailResponse(SessionResponse):
     device_fingerprint: Optional[DeviceFingerprintResponse] = None
     user: Optional[UserResponse] = None
-    audit_logs: list["AuditLogResponse"] = []
+    audit_logs: list["AuditLogResponse"] = Field(default_factory=list)
 
 
 class AuditLogResponse(BaseModel):

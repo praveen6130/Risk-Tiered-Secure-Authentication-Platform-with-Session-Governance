@@ -61,7 +61,8 @@ export function AdminDashboard() {
   });
 
   const sessions = useMemo(() => {
-    let filtered = sessionsData?.data || [];
+    const raw = sessionsData?.data;
+    let filtered: Session[] = Array.isArray(raw) ? [...raw] : (Array.isArray(sessionsData) ? [...(sessionsData as any)] : []);
     
     if (search) {
       const searchLower = search.toLowerCase();

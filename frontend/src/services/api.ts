@@ -38,7 +38,44 @@ const processQueue = (error: unknown, token: string | null = null) => {
 };
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Netlify Fallback: Netlify's SPA rewrite rule (/* -> /index.html 200) causes API requests
+    // to return 200 OK with the HTML content of index.html when no backend server is running.
+    if (
+      typeof response.data === 'string' &&
+      (response.data.trim().startsWith('<!doctype') ||
+       response.data.trim().startsWith('<!DOCTYPE') ||
+       response.data.trim().startsWith('<html'))
+    ) {
+      let parsedData: any = response.config.data;
+      if (typeof parsedData === 'string') {
+        try {
+          parsedData = JSON.parse(parsedData);
+        } catch {
+          // ignore
+        }
+      }
+      const mockResult = handleMockRequest(response.config.url || '', response.config.method || 'GET', parsedData);
+      if (mockResult) {
+        if (mockResult.status >= 200 && mockResult.status < 300) {
+          return {
+            ...response,
+            data: mockResult.data,
+            status: mockResult.status,
+          };
+        } else {
+          return Promise.reject({
+            response: {
+              data: mockResult.data,
+              status: mockResult.status,
+              config: response.config,
+            },
+          });
+        }
+      }
+    }
+    return response;
+  },
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 

@@ -74,11 +74,20 @@ export function DashboardPage() {
     onError: (error: any) => toast.error(error.response?.data?.detail || 'Failed to deny session'),
   });
 
-  const sessions = sessionsData?.data || [];
-  const pendingApprovals = pendingApprovalsData?.data || [];
-  const activeSessions = sessions.filter(s => s.status === 'active');
+  const rawSessions = sessionsData?.data;
+  const sessions: Session[] = Array.isArray(rawSessions) ? rawSessions : (Array.isArray(sessionsData) ? (sessionsData as any) : []);
+
+  const rawPending = pendingApprovalsData?.data;
+  const pendingApprovals: Session[] = Array.isArray(rawPending) ? rawPending : (Array.isArray(pendingApprovalsData) ? (pendingApprovalsData as any) : []);
+
+  const rawAudit = auditData?.data;
+  const auditList: AuditLog[] = Array.isArray(rawAudit) ? rawAudit : (Array.isArray(auditData) ? (auditData as any) : []);
+
+  const activeSessions = sessions.filter(s => s?.status === 'active');
   const riskCounts = sessions.reduce((acc, s) => {
-    acc[s.risk_tier] = (acc[s.risk_tier] || 0) + 1;
+    if (s?.risk_tier) {
+      acc[s.risk_tier] = (acc[s.risk_tier] || 0) + 1;
+    }
     return acc;
   }, {} as Record<RiskTier, number>);
 
@@ -386,7 +395,7 @@ export function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="max-h-64 overflow-y-auto space-y-2">
-                {(auditData?.data || []).slice(0, 10).map(log => (
+                {auditList.slice(0, 10).map(log => (
                   <motion.div
                     key={log.id}
                     initial={{ opacity: 0, x: -10 }}
