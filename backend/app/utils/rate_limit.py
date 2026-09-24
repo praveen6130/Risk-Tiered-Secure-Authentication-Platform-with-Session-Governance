@@ -56,6 +56,9 @@ class InMemoryRateLimiter(RateLimiterBackend):
         if key in self.buckets:
             del self.buckets[key]
 
+    async def reset_all(self) -> None:
+        self.buckets.clear()
+
 
 class RedisRateLimiter(RateLimiterBackend):
     def __init__(self, redis_url: str):
@@ -142,6 +145,11 @@ class RateLimiter:
     async def reset(self, key: str):
         if self._backend:
             await self._backend.reset(key)
+
+    async def reset_all(self):
+        if self._backend:
+            if hasattr(self._backend, "reset_all"):
+                await self._backend.reset_all()
 
 
 rate_limiter = RateLimiter()

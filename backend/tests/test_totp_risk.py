@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime, timezone
 from app.utils.totp import TOTPManager, verify_totp, generate_totp_secret
 
 
@@ -49,18 +50,21 @@ class TestRiskEngine:
             email="test@example.com",
             password_hash="hash",
             risk_profile={
-                "typical_login_hours": [9, 10, 11, 14, 15],
-                "typical_login_days": [0, 1, 2, 3, 4],
+                "typical_login_hours": list(range(24)),
+                "typical_login_days": list(range(7)),
             }
         )
         
         # Mock known trusted device
-        result = await risk_engine.assess_login_risk(
-            user=user,
-            ip="192.168.1.1",
-            user_agent="Mozilla/5.0",
-            device_fingerprint={"test": "known"},
-        )
+        from unittest.mock import patch
+        with patch.object(risk_engine, '_check_device', return_value=(True, type('obj', (object,), {'is_trusted': True})())), \
+             patch.object(risk_engine, '_get_last_successful_session', return_value=None):
+            result = await risk_engine.assess_login_risk(
+                user=user,
+                ip="192.168.1.1",
+                user_agent="Mozilla/5.0",
+                device_fingerprint={"test": "known"},
+            )
         
         assert result.risk_tier == RiskTier.LOW
         assert result.requires_step_up is False
@@ -87,7 +91,7 @@ class TestRiskEngine:
                 'country': 'US',
                 'city': 'New York',
                 'ip_address': '1.1.1.1',
-                'last_activity_at': datetime.utcnow(),
+                'last_activity_at': datetime.now(timezone.utc),
             })()
             
             from app.schemas.schemas import GeoIPResponse

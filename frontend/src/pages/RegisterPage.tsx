@@ -1,24 +1,22 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { zxcvbn, zxcvbnOptions } from 'zxcvbn';
-import { Eye, EyeOff, Loader2, Shield, AlertCircle, CheckCircle, Mail, Lock, User } from 'lucide-react';
-import { getDeviceFingerprint } from '../../utils/fingerprint';
-import { authApi } from '../../services/api';
-import { useAuth } from '../../context/AuthContext';
+import zxcvbn from 'zxcvbn';
+import { useNavigate, Link } from 'react-router-dom';
+import { Eye, EyeOff, Loader2, Shield, AlertCircle, Mail, Lock, User as UserIcon } from 'lucide-react';
+import { getDeviceFingerprint, cn } from '../utils/fingerprint';
+import { authApi } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { Button, Input, Card, CardContent, CardHeader, CardTitle, CardDescription, Progress } from '../components/ui';
 import { toast } from 'sonner';
-import { cn } from '../../utils/fingerprint';
-
-zxcvbnOptions.setIgnoredKeys(['Shift', 'Control', 'Alt', 'Meta']);
 
 const registerSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   confirmPassword: z.string(),
-  fullName: z.string().min(2, 'Name must be at least 2 characters').optional(),
+  fullName: z.string().min(2, 'Name must be at least 2 characters').optional().or(z.literal('')),
   rememberDevice: z.boolean().default(false),
 }).refine(data => data.password === data.confirmPassword, {
   message: 'Passwords do not match',
@@ -28,12 +26,23 @@ const registerSchema = z.object({
 type RegisterForm = z.infer<typeof registerSchema>;
 
 export function RegisterPage() {
-  const { register: loginUser } = useAuth();
+  const { login, isAuthenticated, user } = useAuth();
+  const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState(0);
   const [fingerprint, setFingerprint] = useState<object | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      if (user?.is_superuser) {
+        navigate('/admin', { replace: true });
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
+    }
+  }, [isAuthenticated, user, navigate]);
 
   const {
     register,
@@ -61,7 +70,6 @@ export function RegisterPage() {
   }, []);
 
   const strengthLabels = ['Very Weak', 'Weak', 'Fair', 'Good', 'Strong'];
-  const strengthColors = ['bg-red-500', 'bg-amber-500', 'bg-yellow-500', 'bg-lime-500', 'bg-green-500'];
 
   const onSubmit = async (data: RegisterForm) => {
     setIsLoading(true);
@@ -71,15 +79,20 @@ export function RegisterPage() {
       await authApi.register({
         email: data.email,
         password: data.password,
-        full_name: data.fullName,
+        full_name: data.fullName || undefined,
         device_fingerprint: fingerprint || undefined,
       });
       
-      toast.success('Account created! Please sign in.');
+      toast.success('Account created successfully!');
       
-      await loginUser(data.email, data.password, fingerprint || undefined, data.rememberDevice);
+      const tokenData = await login(data.email, data.password, fingerprint || undefined, data.rememberDevice);
+      if (tokenData?.mfa_required) {
+        navigate(`/step-up?session_id=${tokenData.session_id}&type=totp`);
+      } else {
+        navigate('/dashboard');
+      }
     } catch (error: any) {
-      const message = error.response?.data?.detail || 'Registration failed. Please try again.';
+      const message = error.response?.data?.detail || error.message || 'Registration failed. Please try again.';
       setErrors({ form: message });
       toast.error(message);
     } finally {
@@ -128,7 +141,7 @@ export function RegisterPage() {
               error={formErrors.fullName?.message}
               autoComplete="name"
               disabled={isLoading}
-              leftIcon={<User className="h-5 w-5 text-gray-400" />}
+              leftIcon={<UserIcon className="h-5 w-5 text-gray-400" />}
             />
 
             <Input
@@ -188,12 +201,6 @@ export function RegisterPage() {
                   size="sm"
                   color={passwordStrength >= 3 ? 'success' : passwordStrength >= 1 ? 'warning' : 'danger'}
                 />
-                <p className="text-xs text-gray-500">
-                  {passwordStrength === 0 ? 'Add more characters, numbers, and symbols' :
-                   passwordStrength === 1 ? 'Try adding numbers and symbols' :
-                   passwordStrength === 2 ? 'Good, but could be stronger' :
-                   passwordStrength === 3 ? 'Strong password!' : 'Excellent!'}
-                </p>
               </div>
             )}
 
@@ -213,26 +220,12 @@ export function RegisterPage() {
             </Button>
           </form>
 
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-gray-200" />
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">Already have an account?</span>
-            </div>
-          </div>
-
-          <Button variant="outline" className="w-full" onClick={() => window.location.href = '/login'}>
-            Sign In
-          </Button>
-
-          <div className="pt-4 space-y-3 text-xs text-gray-500 text-center">
-            <p>By creating an account, you agree to our</p>
-            <div className="flex justify-center gap-4">
-              <a href="/terms" className="text-primary-600 hover:text-primary-700">Terms of Service</a>
-              <a href="/privacy" className="text-primary-600 hover:text-primary-700">Privacy Policy</a>
-            </div>
-          </div>
+          <p className="text-center text-sm text-gray-600">
+            Already have an account?{' '}
+            <Link to="/login" className="text-primary-600 hover:text-primary-700 font-medium">
+              Sign in
+            </Link>
+          </p>
         </CardContent>
       </Card>
     </motion.div>

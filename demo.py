@@ -6,13 +6,21 @@ Run this after starting the backend and frontend to verify all features work.
 import asyncio
 import httpx
 import json
+import sys
 import time
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-console = Console()
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
+console = Console(legacy_windows=False)
 
 BASE_URL = "http://localhost:8000/api/v1"
 

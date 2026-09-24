@@ -1,6 +1,6 @@
 import httpx
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.core.config import settings
@@ -10,8 +10,18 @@ from app.schemas.schemas import GeoIPResponse
 _geo_cache: dict[str, tuple[GeoIPResponse, datetime]] = {}
 
 
+def is_private_or_local_ip(ip: str) -> bool:
+    if not ip or ip in ("127.0.0.1", "::1", "localhost", "testclient"):
+        return True
+    try:
+        import ipaddress
+        return ipaddress.ip_address(ip).is_private
+    except ValueError:
+        return True
+
+
 async def get_geo_ip(ip: str) -> GeoIPResponse:
-    if ip in ("127.0.0.1", "::1", "localhost"):
+    if is_private_or_local_ip(ip):
         return GeoIPResponse(
             ip=ip,
             country="Local",
@@ -29,7 +39,7 @@ async def get_geo_ip(ip: str) -> GeoIPResponse:
             is_tor=False,
         )
     
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if ip in _geo_cache:
         cached, cached_at = _geo_cache[ip]
         if now - cached_at < timedelta(seconds=settings.GEO_IP_CACHE_TTL):
@@ -99,7 +109,10 @@ def is_impossible_travel(
     if not last_login:
         return False
     
-    time_diff_hours = (datetime.utcnow() - last_login).total_seconds() / 3600
+    now = datetime.now(timezone.utc)
+    if last_login.tzinfo is None:
+        last_login = last_login.replace(tzinfo=timezone.utc)
+    time_diff_hours = (now - last_login).total_seconds() / 3600
     if time_diff_hours <= 0:
         return False
     

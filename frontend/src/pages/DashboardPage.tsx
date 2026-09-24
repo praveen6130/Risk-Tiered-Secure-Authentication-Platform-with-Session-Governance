@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { LogOut, Users, Shield, Activity, Zap, Globe, Trash2, ChevronDown, ChevronUp, RefreshCw, Settings, Bell } from 'lucide-react';
-import { authApi, adminApi } from '../../services/api';
-import { useAuth } from '../../context/AuthContext';
-import { Session, User, AuditLog, RiskTier, SessionStatus } from '../../types';
+import { LogOut, Users, Shield, Activity, Zap, Globe, Trash2, ChevronDown, ChevronUp, RefreshCw, Settings, Bell, LayoutDashboard } from 'lucide-react';
+import { authApi } from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { Session, User, AuditLog, RiskTier, SessionStatus } from '../types';
 import { Button, Badge, Card, CardContent, CardHeader, CardTitle, Modal, Progress, Input } from '../components/ui';
-import { formatDate, formatRelativeTime, getRiskTierColor, getRiskTierBg, cn } from '../../utils/fingerprint';
+import { formatDate, formatRelativeTime, getRiskTierColor, getRiskTierBg, cn } from '../utils/fingerprint';
 import { toast } from 'sonner';
 
 export function DashboardPage() {
   const { user, logout, logoutAll, refreshUser } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [detailSession, setDetailSession] = useState<Session | null>(null);
   const [showRevokeAll, setShowRevokeAll] = useState(false);
@@ -21,8 +23,9 @@ export function DashboardPage() {
   });
 
   const { data: auditData } = useQuery({
-    queryKey: ['userAuditLogs'],
-    queryFn: () => adminApi.getAuditLogs({ user_id: user?.id, limit: 50 }),
+    queryKey: ['userAuditLogs', user?.id],
+    queryFn: () => authApi.getUserAuditLogs({ limit: 50 }),
+    enabled: !!user?.id,
   });
 
   const revokeMutation = useMutation({
@@ -69,17 +72,20 @@ export function DashboardPage() {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              {user?.is_superuser && (
+                <Link to="/admin">
+                  <Button variant="outline" size="sm">
+                    <LayoutDashboard className="h-4 w-4 mr-2 text-primary-600" />
+                    Admin Panel
+                  </Button>
+                </Link>
+              )}
               <Button variant="outline" size="sm" onClick={() => { refetchSessions(); refreshUser(); }}>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh
               </Button>
               <div className="relative group">
-                <Button variant="ghost" size="sm">
-                  <Bell className="h-5 w-5" />
-                </Button>
-              </div>
-              <div className="relative group">
-                <Button variant="ghost" size="sm" onClick={() => logout()}>
+                <Button variant="ghost" size="sm" onClick={() => logout()} title="Sign Out">
                   <LogOut className="h-5 w-5" />
                 </Button>
               </div>
@@ -234,7 +240,7 @@ export function DashboardPage() {
                       </div>
                     </div>
                     {!user?.mfa_enabled && (
-                      <Button variant="outline" size="sm" onClick={() => window.location.href = '/mfa/setup'}>
+                      <Button variant="outline" size="sm" onClick={() => navigate('/mfa/setup')}>
                         Enable
                       </Button>
                     )}
@@ -371,16 +377,16 @@ function SessionDetailView({ session, onClose, onRevoke }: { session: Session; o
             <CardTitle className="text-lg">Risk Factors</CardTitle>
           </CardHeader>
           <CardContent>
-            {Object.keys(session.risk_factors).length === 0 ? (
+            {Object.keys(session.risk_factors || {}).length === 0 ? (
               <p className="text-gray-500 text-sm">No risk factors detected</p>
             ) : (
               <div className="space-y-2">
-                {Object.entries(session.risk_factors).map(([key, factor]: [string, any]) => (
+                {Object.entries(session.risk_factors || {}).map(([key, factor]: [string, any]) => (
                   <div key={key} className="flex items-center justify-between p-2 rounded-lg bg-gray-50">
                     <span className="text-sm font-medium">{key.replace('_', ' ')}</span>
                     <div className="flex items-center gap-2">
-                      <Progress value={factor.weight * 100} max={100} size="sm" className="w-32" color="warning" />
-                      <span className="text-xs text-gray-500">{(factor.weight * 100).toFixed(0)}%</span>
+                      <Progress value={(factor?.weight || 0) * 100} max={100} size="sm" className="w-32" color="warning" />
+                      <span className="text-xs text-gray-500">{((factor?.weight || 0) * 100).toFixed(0)}%</span>
                     </div>
                   </div>
                 ))}

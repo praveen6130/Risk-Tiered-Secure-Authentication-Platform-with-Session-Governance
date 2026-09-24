@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.core.config import settings
@@ -95,7 +95,7 @@ class RiskEngine:
                 "description": "Impossible travel detected",
             }
         
-        current_hour = datetime.utcnow().hour
+        current_hour = datetime.now(timezone.utc).hour
         typical_hours = user.risk_profile.get("typical_login_hours", [])
         if typical_hours and current_hour not in typical_hours:
             risk_score += settings.RISK_UNUSUAL_HOUR_WEIGHT
@@ -104,7 +104,7 @@ class RiskEngine:
                 "description": f"Login at unusual hour: {current_hour}:00 UTC",
             }
         
-        current_weekday = datetime.utcnow().weekday()
+        current_weekday = datetime.now(timezone.utc).weekday()
         typical_days = user.risk_profile.get("typical_login_days", [])
         if typical_days and current_weekday not in typical_days:
             risk_score += settings.RISK_UNUSUAL_DAY_WEIGHT
@@ -132,8 +132,10 @@ class RiskEngine:
         risk_score = min(risk_score, 1.0)
         
         if risk_score >= settings.RISK_HIGH_THRESHOLD:
-            risk_tier = RiskTier.CRITICAL if risk_score >= 0.8 else RiskTier.HIGH
+            risk_tier = RiskTier.CRITICAL
         elif risk_score >= settings.RISK_MEDIUM_THRESHOLD:
+            risk_tier = RiskTier.HIGH
+        elif risk_score >= settings.RISK_LOW_THRESHOLD:
             risk_tier = RiskTier.MEDIUM
         else:
             risk_tier = RiskTier.LOW
@@ -183,7 +185,7 @@ class RiskEngine:
     
     async def _count_recent_logins(self, user_id: int, hours: int = 1) -> int:
         async with get_session_context() as session:
-            since = datetime.utcnow() - timedelta(hours=hours)
+            since = datetime.now(timezone.utc) - timedelta(hours=hours)
             stmt = select(func.count(Session.id)).where(
                 Session.user_id == user_id,
                 Session.created_at >= since,

@@ -5,12 +5,20 @@ Tests that rate limiting effectively blocks brute force attacks.
 """
 import asyncio
 import httpx
+import sys
 import time
 from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress
 
-console = Console()
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
+console = Console(legacy_windows=False)
 BASE_URL = "http://localhost:8000/api/v1"
 
 

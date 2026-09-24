@@ -1,9 +1,13 @@
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from sqlmodel import SQLModel, Field, Relationship
 from sqlalchemy import Column, DateTime, Index
 import sqlalchemy as sa
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class RiskTier(str, enum.Enum):
@@ -34,8 +38,8 @@ class User(SQLModel, table=True):
     totp_secret: Optional[str] = Field(default=None, max_length=32)
     backup_codes_hash: Optional[str] = Field(default=None, max_length=1000)
     risk_profile: dict = Field(default_factory=dict, sa_column=Column(sa.JSON))
-    created_at: datetime = Field(default_factory=datetime.utcnow, sa_column=Column(DateTime, default=datetime.utcnow))
-    updated_at: datetime = Field(default_factory=datetime.utcnow, sa_column=Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow))
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), default=utc_now))
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now))
     last_login_at: Optional[datetime] = Field(default=None)
 
     sessions: list["Session"] = Relationship(back_populates="user")
@@ -61,9 +65,9 @@ class Session(SQLModel, table=True):
     status: SessionStatus = Field(default=SessionStatus.ACTIVE)
     mfa_verified: bool = Field(default=False)
     step_up_completed: bool = Field(default=False)
-    created_at: datetime = Field(default_factory=datetime.utcnow, sa_column=Column(DateTime, default=datetime.utcnow))
-    last_activity_at: datetime = Field(default_factory=datetime.utcnow, sa_column=Column(DateTime, default=datetime.utcnow))
-    expires_at: datetime = Field(sa_column=Column(DateTime))
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), default=utc_now))
+    last_activity_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), default=utc_now))
+    expires_at: datetime = Field(sa_column=Column(DateTime(timezone=True)))
     revoked_at: Optional[datetime] = Field(default=None)
     revoked_reason: Optional[str] = Field(default=None, max_length=255)
 
@@ -86,8 +90,8 @@ class DeviceFingerprint(SQLModel, table=True):
     nickname: Optional[str] = Field(default=None, max_length=100)
     is_trusted: bool = Field(default=False)
     user_agent: str = Field(max_length=500)
-    created_at: datetime = Field(default_factory=datetime.utcnow, sa_column=Column(DateTime, default=datetime.utcnow))
-    last_seen_at: datetime = Field(default_factory=datetime.utcnow, sa_column=Column(DateTime, default=datetime.utcnow))
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), default=utc_now))
+    last_seen_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), default=utc_now))
 
     user: Optional[User] = Relationship(back_populates="devices")
     sessions: list[Session] = Relationship(back_populates="device_fingerprint")
@@ -105,8 +109,8 @@ class AuditLog(SQLModel, table=True):
     user_agent: str = Field(max_length=500)
     risk_score: float = Field(default=0.0)
     risk_tier: RiskTier = Field(default=RiskTier.LOW)
-    metadata: dict = Field(default_factory=dict, sa_column=Column(sa.JSON))
-    created_at: datetime = Field(default_factory=datetime.utcnow, sa_column=Column(DateTime, default=datetime.utcnow))
+    audit_metadata: dict = Field(default_factory=dict, sa_column=Column("metadata", sa.JSON))
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), default=utc_now))
 
     user: Optional[User] = Relationship(back_populates="audit_logs")
 
@@ -122,5 +126,5 @@ class RateLimitBucket(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     key: str = Field(unique=True, index=True, max_length=255)
     count: int = Field(default=0)
-    window_start: datetime = Field(default_factory=datetime.utcnow, sa_column=Column(DateTime, default=datetime.utcnow))
-    window_end: datetime = Field(sa_column=Column(DateTime))
+    window_start: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), default=utc_now))
+    window_end: datetime = Field(sa_column=Column(DateTime(timezone=True)))

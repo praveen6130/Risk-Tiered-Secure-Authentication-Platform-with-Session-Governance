@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { authApi } from '../../services/api';
+import { authApi } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { Loader2, Shield, Mail, Smartphone, CheckCircle, AlertCircle, Clock, RefreshCw } from 'lucide-react';
-import { Button, Card, CardContent, CardHeader, CardTitle, CardDescription, Progress, Input } from '../ui';
+import { Button, Card, CardContent, CardHeader, CardTitle, CardDescription, Progress, Input } from '../components/ui';
 import { toast } from 'sonner';
-import { StepUpStatus } from '../../types';
+import { StepUpStatus } from '../types';
 
 type ChallengeType = 'totp' | 'email_otp' | 'device_approval';
 
@@ -40,6 +41,7 @@ const challengeConfigs: Record<ChallengeType, ChallengeConfig> = {
 export function StepUpPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { setTokens, refreshUser } = useAuth();
   
   const sessionId = searchParams.get('session_id');
   const challengeType = (searchParams.get('type') || 'totp') as ChallengeType;
@@ -49,8 +51,8 @@ export function StepUpPage() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(300);
   const [status, setStatus] = useState<'pending' | 'approved' | 'denied' | 'expired'>('pending');
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const statusIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<any>(null);
+  const statusIntervalRef = useRef<any>(null);
 
   const config = challengeConfigs[challengeType];
 
@@ -112,7 +114,11 @@ export function StepUpPage() {
     
     setIsVerifying(true);
     try {
-      await authApi.stepUp(Number(sessionId), challengeType, code || undefined);
+      const response = await authApi.stepUp(Number(sessionId), challengeType, code || undefined);
+      if (response.data?.access_token) {
+        setTokens(response.data);
+        await refreshUser();
+      }
       handleSuccess();
     } catch (error: any) {
       toast.error(error.response?.data?.detail || 'Verification failed');
@@ -269,13 +275,15 @@ export function StepUpPage() {
                       newCode[i] = e.target.value.toUpperCase();
                       const filtered = newCode.filter(c => /^[A-Z0-9]$/.test(c)).join('');
                       setCode(filtered.padEnd(6, ''));
-                      if (e.target.value && i < 5) {
-                        (e.target.nextElementSibling as HTMLInputElement)?.focus();
+                      const val = (e.target as HTMLInputElement).value;
+                      if (val && i < 5) {
+                        ((e.target as HTMLElement).nextElementSibling as HTMLInputElement)?.focus();
                       }
                     }}
                     onKeyDown={(e) => {
-                      if (e.key === 'Backspace' && !e.target.value && i > 0) {
-                        (e.target.previousElementSibling as HTMLInputElement)?.focus();
+                      const input = e.target as HTMLInputElement;
+                      if (e.key === 'Backspace' && !input.value && i > 0) {
+                        (input.previousElementSibling as HTMLInputElement)?.focus();
                       }
                     }}
                     className="flex-1 w-12 h-12 text-center text-2xl font-mono border-2 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"

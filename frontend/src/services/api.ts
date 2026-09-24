@@ -41,7 +41,11 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    const isAuthEndpoint = originalRequest.url?.includes('/auth/login') || 
+                           originalRequest.url?.includes('/auth/register') || 
+                           originalRequest.url?.includes('/auth/refresh');
+
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -93,6 +97,8 @@ api.interceptors.response.use(
 );
 
 export const authApi = {
+  getMe: () => api.get<User>('/auth/me'),
+
   register: (data: { email: string; password: string; full_name?: string; device_fingerprint?: object }) =>
     api.post<User>('/auth/register', data),
 
@@ -119,10 +125,16 @@ export const authApi = {
 
   getSession: (id: number) => api.get<SessionDetail>(`/auth/sessions/${id}`),
 
+  revokeSession: (id: number, reason?: string) =>
+    api.post(`/auth/sessions/${id}/revoke`, { reason }),
+
   stepUp: (sessionId: number, challengeType: string, code?: string) =>
     api.post<Token>('/auth/step-up', { session_id: sessionId, challenge_type: challengeType, code }),
 
   stepUpStatus: (sessionId: number) => api.get<StepUpStatus>(`/auth/step-up/status/${sessionId}`),
+
+  getUserAuditLogs: (params?: { limit?: number }) =>
+    api.get<AuditLog[]>('/auth/audit-logs', { params }),
 };
 
 export const adminApi = {

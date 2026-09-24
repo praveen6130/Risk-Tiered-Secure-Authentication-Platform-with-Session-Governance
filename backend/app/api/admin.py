@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import select, func
@@ -156,7 +156,7 @@ async def get_risk_stats(
             tier_stats[tier.value] = tier_result.first() or 0
         
         recent_stmt = select(func.count(AuditLog.id)).where(
-            AuditLog.created_at >= datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            AuditLog.created_at >= datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         )
         recent_result = await session.exec(recent_stmt)
         today_logs = recent_result.first() or 0

@@ -3,15 +3,17 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlmodel import select
 
 from app.core.config import settings
-from app.db.session import get_session
-from app.models.models import Session, SessionStatus, User, RiskTier
+from app.db.session import get_session, get_session_context
+from app.models.models import Session, SessionStatus, User, RiskTier, AuditLog
 from app.schemas.schemas import (
+    AuditLogResponse,
     DeviceFingerprintCreate,
     LoginRequest,
     MFASetupResponse,
     MFAVerifyRequest,
     RefreshTokenRequest,
     RevokeSessionRequest,
+    UserRevokeSessionRequest,
     SessionResponse,
     SessionDetailResponse,
     StepUpChallengeRequest,
@@ -44,7 +46,7 @@ async def get_current_user(
     user_id = payload.get("sub")
     session_id = payload.get("session_id")
     
-    async with get_session() as session:
+    async with get_session_context() as session:
         stmt = select(User).where(User.id == int(user_id))
         result = await session.exec(stmt)
         user = result.first()
@@ -98,6 +100,11 @@ async def require_admin(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+@router.get("/me", response_model=UserResponse)
+async def get_me(user: User = Depends(get_current_user)):
+    return UserResponse.model_validate(user)
+
+
 @router.post("/register", response_model=UserResponse, status_code=201)
 async def register(
     request: Request,
@@ -111,16 +118,18 @@ async def register(
     if not rl_result.allowed:
         raise HTTPException(status_code=429, detail="Rate limit exceeded", headers={"Retry-After": str(rl_result.retry_after or 60)})
     
-    user = await auth_service.register(
-        email=user_data.email,
-        password=user_data.password,
-        full_name=user_data.full_name,
-        device_fingerprint=user_data.device_fingerprint,
-        ip=client_ip,
-        user_agent=user_agent,
-    )
-    
-    return UserResponse.model_validate(user)
+    try:
+        user = await auth_service.register(
+            email=user_data.email,
+            password=user_data.password,
+            full_name=user_data.full_name,
+            device_fingerprint=user_data.device_fingerprint,
+            ip=client_ip,
+            user_agent=user_agent,
+        )
+        return UserResponse.model_validate(user)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/login", response_model=Token)
@@ -175,8 +184,8 @@ async def verify_mfa(
     request: MFAVerifyRequest,
     user: User = Depends(get_current_user),
 ):
-    if not user.mfa_enabled:
-        raise HTTPException(status_code=400, detail="MFA not enabled")
+    if user.mfa_enabled:
+        raise HTTPException(status_code=400, detail="MFA already enabled")
     
     success = await auth_service.verify_mfa_setup(user, request.code)
     
@@ -324,7 +333,7 @@ async def get_sessions(
 
 
 @router.get("/sessions/{session_id}", response_model=SessionDetailResponse)
-async def get_session(
+async def get_session_by_id(
     session_id: int,
     user: User = Depends(get_current_user),
 ):
@@ -335,6 +344,47 @@ async def get_session(
         raise HTTPException(status_code=404, detail="Session not found")
     
     return SessionDetailResponse.model_validate(sess)
+
+
+@router.post("/sessions/{session_id}/revoke")
+async def revoke_session_by_id(
+    session_id: int,
+    request: Request,
+    body: UserRevokeSessionRequest = None,
+    user: User = Depends(get_current_user),
+):
+    client_ip = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+    reason = body.reason if body and body.reason else "User revoked session"
+    
+    success = await auth_service.revoke_session(
+        session_id,
+        user.id,
+        reason,
+        client_ip,
+        user_agent,
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail="Session not found or already revoked")
+    return {"message": "Session revoked successfully"}
+
+
+@router.get("/audit-logs", response_model=list[AuditLogResponse])
+async def get_my_audit_logs(
+    user: User = Depends(get_current_user),
+    limit: int = 50,
+):
+    async with get_session_context() as session:
+        stmt = (
+            select(AuditLog)
+            .where(AuditLog.user_id == user.id)
+            .order_by(AuditLog.created_at.desc())
+            .limit(limit)
+        )
+        result = await session.exec(stmt)
+        logs = list(result.all())
+    return [AuditLogResponse.model_validate(l) for l in logs]
+
 
 
 @router.post("/step-up", response_model=Token)

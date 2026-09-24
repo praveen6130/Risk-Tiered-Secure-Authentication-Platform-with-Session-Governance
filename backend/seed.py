@@ -1,5 +1,6 @@
 import asyncio
 import random
+import secrets
 from datetime import datetime, timedelta, timezone
 from faker import Faker
 
@@ -9,13 +10,17 @@ from app.models.models import AuditLog, DeviceFingerprint, RiskTier, Session, Se
 from app.services.auth import auth_service
 from app.utils.security import hash_password, hash_token, generate_refresh_token
 from sqlmodel import select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 
 fake = Faker()
 engine = create_async_engine(settings.DATABASE_URL, echo=False)
-async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
+def fake_dt(start_date="-30d", end_date="now") -> datetime:
+    return fake.date_time_between(start_date=start_date, end_date=end_date, tzinfo=timezone.utc)
 
 
 async def seed_users() -> list[User]:
@@ -38,8 +43,8 @@ async def seed_users() -> list[User]:
                     "typical_login_hours": list(range(8, 18)),
                     "typical_login_days": list(range(0, 5)),
                 },
-                created_at=fake.date_time_between(start_date="-30d", end_date="-1d"),
-                last_login_at=fake.date_time_between(start_date="-7d", end_date="now"),
+                created_at=fake_dt("-30d", "-1d"),
+                last_login_at=fake_dt("-7d", "now"),
             )
             session.add(user)
             users.append(user)
@@ -111,12 +116,12 @@ async def seed_sessions(users: list[User]):
                 scenario = random.choice(risk_scenarios)
                 country, city, lat, lon = random.choice(locations)
                 
-                created = fake.date_time_between(start_date="-30d", end_date="now")
+                created = fake_dt("-30d", "now")
                 last_activity = created + timedelta(minutes=random.randint(0, 1440))
                 
                 sess = Session(
                     user_id=user.id,
-                    session_token=hash_token(fake.token_hex(32)),
+                    session_token=hash_token(secrets.token_hex(32)),
                     refresh_token_hash=hash_token(generate_refresh_token()),
                     ip_address=fake.ipv4(),
                     user_agent=fake.user_agent(),
@@ -131,7 +136,7 @@ async def seed_sessions(users: list[User]):
                     created_at=created,
                     last_activity_at=last_activity,
                     expires_at=datetime.now(timezone.utc) + timedelta(days=7),
-                    revoked_at=fake.date_time_between(start_date=created, end_date="now") if random.random() < 0.1 else None,
+                    revoked_at=fake_dt(start_date=created, end_date="now") if random.random() < 0.1 else None,
                 )
                 session.add(sess)
         await session.commit()
@@ -148,7 +153,7 @@ async def seed_audit_logs(users: list[User]):
         for user in users:
             for _ in range(random.randint(10, 30)):
                 action = random.choice(actions)
-                created = fake.date_time_between(start_date="-30d", end_date="now")
+                created = fake_dt("-30d", "now")
                 
                 log = AuditLog(
                     user_id=user.id,
@@ -159,7 +164,7 @@ async def seed_audit_logs(users: list[User]):
                     user_agent=fake.user_agent(),
                     risk_score=random.uniform(0, 1),
                     risk_tier=random.choice(list(RiskTier)),
-                    metadata={},
+                    audit_metadata={},
                     created_at=created,
                 )
                 session.add(log)
@@ -169,6 +174,14 @@ async def seed_audit_logs(users: list[User]):
 async def main():
     print("Initializing database...")
     await init_db()
+    
+    from sqlalchemy import delete
+    async with async_session() as session:
+        await session.exec(delete(AuditLog))
+        await session.exec(delete(Session))
+        await session.exec(delete(DeviceFingerprint))
+        await session.exec(delete(User))
+        await session.commit()
     
     print("Seeding users...")
     users = await seed_users()

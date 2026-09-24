@@ -1,17 +1,15 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { zxcvbn, zxcvbnOptions } from 'zxcvbn';
-import { Eye, EyeOff, Loader2, AlertCircle, CheckCircle, Shield } from 'lucide-react';
-import { getDeviceFingerprint } from '../../utils/fingerprint';
-import { authApi } from '../../services/api';
-import { useAuth } from '../../context/AuthContext';
-import { Button, Input, Card, CardContent, CardHeader, CardTitle, CardDescription, Progress } from '../ui';
+import zxcvbn from 'zxcvbn';
+import { useNavigate, Link } from 'react-router-dom';
+import { Eye, EyeOff, Loader2, AlertCircle, Shield } from 'lucide-react';
+import { getDeviceFingerprint, cn } from '../utils/fingerprint';
+import { useAuth } from '../context/AuthContext';
+import { Button, Input, Card, CardContent, CardHeader, CardTitle, CardDescription, Progress } from '../components/ui';
 import { toast } from 'sonner';
-
-zxcvbnOptions.setIgnoredKeys(['Shift', 'Control', 'Alt', 'Meta']);
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -22,12 +20,25 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>;
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, isAuthenticated, user, token } = useAuth();
+  const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState(0);
   const [fingerprint, setFingerprint] = useState<object | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      if (user?.is_superuser) {
+        navigate('/admin', { replace: true });
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
+    } else if (token?.mfa_required) {
+      navigate(`/step-up?session_id=${token.session_id}&type=totp`, { replace: true });
+    }
+  }, [isAuthenticated, user, token, navigate]);
 
   const {
     register,
@@ -55,17 +66,22 @@ export function LoginPage() {
   }, []);
 
   const strengthLabels = ['Very Weak', 'Weak', 'Fair', 'Good', 'Strong'];
-  const strengthColors = ['bg-red-500', 'bg-amber-500', 'bg-yellow-500', 'bg-lime-500', 'bg-green-500'];
 
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true);
     setErrors({});
     
     try {
-      await login(data.email, data.password, fingerprint || undefined, data.rememberDevice);
-      toast.success('Welcome back!');
+      const tokenData = await login(data.email, data.password, fingerprint || undefined, data.rememberDevice);
+      if (tokenData?.mfa_required) {
+        toast.info('Two-factor authentication required');
+        navigate(`/step-up?session_id=${tokenData.session_id}&type=totp`);
+      } else {
+        toast.success('Welcome back!');
+        navigate('/dashboard');
+      }
     } catch (error: any) {
-      const message = error.response?.data?.detail || 'Login failed. Please try again.';
+      const message = error.response?.data?.detail || error.message || 'Login failed. Please try again.';
       setErrors({ form: message });
       toast.error(message);
     } finally {
@@ -162,9 +178,9 @@ export function LoginPage() {
                 />
                 <span className="text-sm text-gray-600">Remember this device</span>
               </label>
-              <a href="/forgot-password" className="text-sm text-primary-600 hover:text-primary-700">
+              <span className="text-sm text-primary-600 hover:text-primary-700 cursor-pointer">
                 Forgot password?
-              </a>
+              </span>
             </div>
 
             <Button type="submit" className="w-full" size="lg" loading={isLoading}>
@@ -172,38 +188,14 @@ export function LoginPage() {
             </Button>
           </form>
 
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-gray-200" />
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">Or continue with</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Button variant="outline" type="button" disabled>
-              <svg className="h-5 w-5" viewBox="0 0 24 24"><path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/></svg>
-              <span>Google</span>
-            </Button>
-            <Button variant="outline" type="button" disabled>
-              <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.18 11.34.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.28-1.56 3.285-1.23 3.285-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
-              <span>GitHub</span>
-            </Button>
-          </div>
-
           <p className="text-center text-sm text-gray-600">
             Don't have an account?{' '}
-            <a href="/register" className="text-primary-600 hover:text-primary-700 font-medium">
+            <Link to="/register" className="text-primary-600 hover:text-primary-700 font-medium">
               Sign up
-            </a>
+            </Link>
           </p>
         </CardContent>
       </Card>
     </motion.div>
   );
-}
-
-function cn(...classes: (string | undefined | null | false)[]) {
-  return classes.filter(Boolean).join(' ');
 }

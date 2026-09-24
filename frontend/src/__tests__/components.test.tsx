@@ -194,6 +194,7 @@ describe('AuthContext', () => {
       )}
     )
 
-    expect(screen.getByTestId('loading')).toHaveTextContent('true')
+    expect(screen.getByTestId('authenticated')).toHaveTextContent('false')
+    expect(screen.getByTestId('user')).toHaveTextContent('none')
   })
 })

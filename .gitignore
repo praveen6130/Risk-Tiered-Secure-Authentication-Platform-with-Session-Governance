@@ -4,6 +4,8 @@ __pycache__/
 .venv/
 *.db
 .env
+*.egg-info/
+.pytest_cache/
 
 # Node
 node_modules/
@@ -17,3 +19,4 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+

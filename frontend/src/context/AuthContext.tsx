@@ -8,7 +8,7 @@ interface AuthContextType {
   token: Token | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string, deviceFingerprint?: object, rememberDevice?: boolean) => Promise<void>;
+  login: (email: string, password: string, deviceFingerprint?: object, rememberDevice?: boolean) => Promise<Token | undefined>;
   register: (email: string, password: string, fullName?: string, deviceFingerprint?: object) => Promise<void>;
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
@@ -24,53 +24,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<Token | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadStoredAuth = useCallback(async () => {
-    const storedToken = localStorage.getItem('access_token');
-    const storedRefresh = localStorage.getItem('refresh_token');
-    
-    if (storedToken && storedRefresh) {
-      setToken(JSON.parse(storedToken) as Token);
-      try {
-        await refreshUser();
-      } catch {
-        clearAuth();
-      }
+  const refreshUser = useCallback(async () => {
+    try {
+      const response = await authApi.getMe();
+      setUser(response.data);
+    } catch {
+      clearAuth();
     }
-    setIsLoading(false);
   }, []);
 
-  const refreshUser = async () => {
+  const loadStoredAuth = useCallback(async () => {
     try {
-      const response = await authApi.getSessions();
-      if (response.data.length > 0) {
-        const latestSession = response.data[0];
-        const userResponse = await fetch(`${import.meta.env.VITE_API_URL || '/api/v1'}/auth/sessions/${latestSession.id}`, {
-          credentials: 'include',
-        });
-        if (userResponse.ok) {
-          const sessionData = await userResponse.json();
-          setUser(sessionData.user);
+      if (typeof window === 'undefined' || !window.localStorage) {
+        setIsLoading(false);
+        return;
+      }
+      const storedToken = localStorage.getItem('access_token');
+      const storedRefresh = localStorage.getItem('refresh_token');
+      
+      if (storedToken && storedRefresh) {
+        let tokenObj: Token;
+        try {
+          tokenObj = JSON.parse(storedToken);
+        } catch {
+          tokenObj = {
+            access_token: storedToken,
+            refresh_token: storedRefresh,
+            token_type: 'bearer',
+          };
+        }
+        setToken(tokenObj);
+        try {
+          const userRes = await authApi.getMe();
+          setUser(userRes.data);
+        } catch {
+          clearAuth();
         }
       }
     } catch {
       clearAuth();
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, []);
 
-  const login = async (email: string, password: string, deviceFingerprint?: object, rememberDevice?: boolean) => {
+  const login = async (email: string, password: string, deviceFingerprint?: object, rememberDevice?: boolean): Promise<Token | undefined> => {
     const response = await authApi.login({ email, password, device_fingerprint: deviceFingerprint, remember_device: rememberDevice });
     const tokenData = response.data;
     
     if (tokenData.mfa_required) {
       setToken(tokenData);
       localStorage.setItem('mfa_session_id', tokenData.session_id || '');
-      return;
+      return tokenData;
     }
     
     setToken(tokenData);
     localStorage.setItem('access_token', tokenData.access_token);
     localStorage.setItem('refresh_token', tokenData.refresh_token);
-    await refreshUser();
+    
+    try {
+      const userRes = await authApi.getMe();
+      setUser(userRes.data);
+    } catch {
+      // If fetching user profile fails
+    }
+    return tokenData;
   };
 
   const register = async (email: string, password: string, fullName?: string, deviceFingerprint?: object) => {

@@ -1,5 +1,6 @@
 import hashlib
 import json
+from datetime import datetime, timezone
 from typing import Optional
 
 from app.models.models import DeviceFingerprint
@@ -51,7 +52,7 @@ async def get_or_create_device(
         device = result.first()
         
         if device:
-            device.last_seen_at = __import__('datetime').datetime.utcnow()
+            device.last_seen_at = datetime.now(timezone.utc)
             device.user_agent = user_agent
             if nickname and not device.nickname:
                 device.nickname = nickname

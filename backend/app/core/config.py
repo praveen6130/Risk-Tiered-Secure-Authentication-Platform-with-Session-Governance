@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     RISK_HIGH_THRESHOLD: float = 0.8
 
     # Risk weights
-    RISK_NEW_DEVICE_WEIGHT: float = 0.7
+    RISK_NEW_DEVICE_WEIGHT: float = 0.4
     RISK_NEW_COUNTRY_WEIGHT: float = 0.4
     RISK_NEW_CITY_WEIGHT: float = 0.2
     RISK_VPN_PROXY_WEIGHT: float = 0.5

@@ -1,21 +1,23 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { useAuth } from '../../context/AuthContext';
-import { authApi } from '../../services/api';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { authApi } from '../services/api';
 import { Copy, Check, AlertCircle, Download, QrCode, Key } from 'lucide-react';
-import { Button, Card, CardContent, CardHeader, CardTitle, CardDescription, Progress } from '../ui';
+import { Button, Card, CardContent, CardHeader, CardTitle, CardDescription, Progress } from '../components/ui';
 import { toast } from 'sonner';
-import { MFASetupResponse } from '../../types';
+import { MFASetupResponse } from '../types';
 
 export function MFASetupPage() {
   const { user, refreshUser } = useAuth();
+  const navigate = useNavigate();
   const [setupData, setSetupData] = useState<MFASetupResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<'setup' | 'verify' | 'complete'>('setup');
   const [verificationCode, setVerificationCode] = useState('');
   const [timeRemaining, setTimeRemaining] = useState(30);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<any>(null);
 
   useEffect(() => {
     loadMFASetup();
@@ -108,7 +110,7 @@ export function MFASetupPage() {
               <p className="text-gray-600">
                 Your account is now protected with two-factor authentication.
               </p>
-              <Button onClick={() => window.location.href = '/dashboard'} className="w-full" size="lg">
+              <Button onClick={() => navigate('/dashboard')} className="w-full" size="lg">
                 Go to Dashboard
               </Button>
             </div>

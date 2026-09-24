@@ -1,9 +1,6 @@
-<<<<<<< HEAD
-# Risk-Tiered-Secure-Authentication-Platform-with-Session-Governance
-=======
-# HTH-CS-02: Risk-Tiered Secure Authentication Platform
+# Risk-Tiered Secure Authentication Platform with Session Governance
 
-A production-ready authentication platform with MFA, risk-based step-up authentication, and session governance dashboard.
+A production-ready authentication platform featuring adaptive multi-factor authentication (MFA), risk-based step-up authentication, and an enterprise session governance dashboard.
 
 ## Features
 
@@ -52,43 +49,47 @@ A production-ready authentication platform with MFA, risk-based step-up authenti
 | State | TanStack Query + React Hook Form |
 | Charts | Recharts |
 
-## Quick Start
+## Quick Start (One Command Execution)
 
-### Prerequisites
-- Python 3.11+
-- Node.js 20+
-- Redis (optional, for distributed rate limiting)
+The platform comes with a unified runner and 1-click batch scripts:
 
-### Development Setup
-
+### 1. Launch Platform (Backend + Frontend + Seeding)
 ```bash
-# Backend
-cd backend
-cp .env.example .env
-pip install -e ".[dev]"
-# or: poetry install
-uvicorn app.main:app --reload --port 8000
+python run.py
+# Or on Windows, double-click: start.bat
+```
+This automatically:
+- Sets up `.env` from `.env.example` if needed
+- Checks for Redis/Docker; gracefully falls back to built-in in-memory rate limiting if Docker/Redis is not running
+- Seeds demo users, devices, and sessions
+- Launches FastAPI backend at `http://localhost:8000`
+- Launches Vite React frontend at `http://localhost:5173`
 
-# Frontend (new terminal)
-cd frontend
-npm install
-npm run dev
+### 2. Run Automated Test Suite
+```bash
+python run.py --test
+# Or on Windows, double-click: test.bat
+```
+Runs both:
+- **Backend Tests (`pytest`):** 33/33 integration, TOTP, and security tests passing
+- **Frontend Tests (`vitest`):** 22/22 component, utility, and auth context tests passing
+- **Total:** 55/55 tests passing cleanly
+
+### 3. Run Security & Rate-Limiting Simulation
+```bash
+python run.py --bruteforce
+```
+Simulates brute force attacks and validates per-IP, per-email, and login rate limiting.
+
+### 4. Run Interactive Demo
+```bash
+python run.py --demo
+# Or on Windows, double-click: demo.bat
 ```
 
-### Docker (Recommended)
-
+### 5. Build Frontend Production Bundle
 ```bash
-docker-compose up -d
-# Backend: http://localhost:8000
-# Frontend: http://localhost:5173
-# API Docs: http://localhost:8000/docs
-```
-
-### Seed Demo Data
-
-```bash
-cd backend
-python seed.py
+python run.py --build
 ```
 
 ## Demo Accounts

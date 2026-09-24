@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from app.models.models import AuditLog, RiskTier, User, Session
@@ -29,8 +29,8 @@ class AuditLogger:
                 user_agent=user_agent,
                 risk_score=risk_score,
                 risk_tier=risk_tier,
-                metadata=metadata or {},
-                created_at=datetime.utcnow(),
+                audit_metadata=metadata or {},
+                created_at=datetime.now(timezone.utc),
             )
             session.add(log)
             await session.commit()

@@ -6,6 +6,17 @@ from app.models.models import User
 from app.utils.security import hash_password
 
 
+import uuid
+from app.utils.rate_limit import rate_limiter
+
+
+@pytest.fixture(autouse=True)
+async def reset_rate_limits():
+    await rate_limiter.reset_all()
+    yield
+    await rate_limiter.reset_all()
+
+
 @pytest.fixture(scope="session", autouse=True)
 async def setup_db():
     await init_db()
@@ -21,7 +32,7 @@ async def client():
 @pytest.fixture
 async def test_user():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        email = "test_integration@example.com"
+        email = f"test_{uuid.uuid4().hex[:8]}@example.com"
         password = "TestPass123!"
         await ac.post("/api/v1/auth/register", json={"email": email, "password": password})
         return email, password
@@ -30,14 +41,15 @@ async def test_user():
 class TestAuthFlow:
     @pytest.mark.asyncio
     async def test_register_user(self, client):
+        email = f"newuser_{uuid.uuid4().hex[:8]}@example.com"
         response = await client.post("/api/v1/auth/register", json={
-            "email": "newuser@example.com",
+            "email": email,
             "password": "SecurePass123!",
             "full_name": "Test User"
         })
         assert response.status_code == 201
         data = response.json()
-        assert data["email"] == "newuser@example.com"
+        assert data["email"] == email
         assert data["full_name"] == "Test User"
         assert data["mfa_enabled"] is False
     
@@ -211,13 +223,23 @@ class TestSessions:
         
         sessions_resp = await client.get("/api/v1/auth/sessions", headers=headers)
         session_id = sessions_resp.json()[0]["id"]
-        
         response = await client.post("/api/v1/auth/logout", headers=headers)
         assert response.status_code == 200
         
-        # Session should be revoked
-        sessions_resp = await client.get("/api/v1/auth/sessions", headers=headers)
-        assert sessions_resp.json()[0]["status"] == "revoked"
+        # Revoked session token should be rejected immediately
+        rejected_resp = await client.get("/api/v1/auth/sessions", headers=headers)
+        assert rejected_resp.status_code == 401
+        
+        # Login again to inspect sessions list
+        login2_resp = await client.post("/api/v1/auth/login", json={"email": email, "password": password})
+        token2 = login2_resp.json()["access_token"]
+        headers2 = {"Authorization": f"Bearer {token2}"}
+        
+        sessions_resp = await client.get("/api/v1/auth/sessions", headers=headers2)
+        assert sessions_resp.status_code == 200
+        revoked_sess = next((s for s in sessions_resp.json() if s["id"] == session_id), None)
+        assert revoked_sess is not None
+        assert revoked_sess["status"] == "revoked"
 
 
 if __name__ == "__main__":

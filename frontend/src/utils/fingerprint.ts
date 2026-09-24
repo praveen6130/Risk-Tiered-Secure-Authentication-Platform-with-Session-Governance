@@ -101,8 +101,11 @@ export function getRiskTierBg(tier: string): string {
   }
 }
 
-export function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleString('en-US', {
+export function formatDate(dateString?: string | null): string {
+  if (!dateString) return 'N/A';
+  const d = new Date(dateString);
+  if (isNaN(d.getTime())) return 'N/A';
+  return d.toLocaleString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -111,8 +114,10 @@ export function formatDate(dateString: string): string {
   });
 }
 
-export function formatRelativeTime(dateString: string): string {
+export function formatRelativeTime(dateString?: string | null): string {
+  if (!dateString) return 'Just now';
   const date = new Date(dateString);
+  if (isNaN(date.getTime())) return 'Just now';
   const now = new Date();
   const diff = now.getTime() - date.getTime();
   

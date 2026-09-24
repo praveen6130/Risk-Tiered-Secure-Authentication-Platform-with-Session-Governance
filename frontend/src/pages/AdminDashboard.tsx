@@ -1,20 +1,23 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import {
   Users, Activity, AlertTriangle, Shield, Search, Filter, Download, ChevronDown, ChevronUp,
-  MapPin, Globe, Clock, Zap, Trash2, Eye, MoreHorizontal, Check, X, RefreshCw
+  MapPin, Globe, Clock, Zap, Trash2, Eye, MoreHorizontal, Check, X, RefreshCw, LogOut, LayoutDashboard
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { adminApi, authApi } from '../../services/api';
-import { Session, SessionDetail, RiskTier, SessionStatus, User, AuditLog } from '../../types';
+import { useAuth } from '../context/AuthContext';
+import { adminApi, authApi } from '../services/api';
+import { Session, SessionDetail, RiskTier, SessionStatus, User, AuditLog } from '../types';
 import { Button, Input, Badge, Card, CardContent, CardHeader, CardTitle, Modal, Progress } from '../components/ui';
-import { formatDate, formatRelativeTime, getRiskTierColor, getRiskTierBg, cn } from '../../utils/fingerprint';
+import { formatDate, formatRelativeTime, getRiskTierColor, getRiskTierBg, cn } from '../utils/fingerprint';
 import { toast } from 'sonner';
 
 const riskTierOrder: Record<RiskTier, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 const statusOrder: Record<SessionStatus, number> = { step_up_required: 0, active: 1, blocked: 2, revoked: 3, expired: 4 };
 
 export function AdminDashboard() {
+  const { logout } = useAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [riskFilter, setRiskFilter] = useState<RiskTier | 'all'>('all');
@@ -135,9 +138,18 @@ export function AdminDashboard() {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <Link to="/dashboard">
+                <Button variant="outline" size="sm">
+                  <LayoutDashboard className="h-4 w-4 mr-2" />
+                  User Dashboard
+                </Button>
+              </Link>
               <Button variant="outline" size="sm" onClick={() => { refetchSessions(); queryClient.invalidateQueries({ queryKey: ['riskStats'] }); }}>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => logout()} title="Sign Out">
+                <LogOut className="h-5 w-5" />
               </Button>
             </div>
           </div>
@@ -296,7 +308,7 @@ export function AdminDashboard() {
                               <Badge variant="risk" riskTier={session.risk_tier} />
                             </div>
                             <div className="mt-1 flex flex-wrap gap-1">
-                              {Object.entries(session.risk_factors).map(([key, factor]) => (
+                              {Object.entries(session.risk_factors || {}).map(([key, factor]) => (
                                 <Badge key={key} variant="outline" className="text-xs">
                                   {key.replace('_', ' ')}
                                 </Badge>
@@ -431,16 +443,16 @@ function SessionDetailModal({ session, onClose }: { session: SessionDetail; onCl
             <CardTitle className="text-lg">Risk Factors</CardTitle>
           </CardHeader>
           <CardContent>
-            {Object.keys(session.risk_factors).length === 0 ? (
+            {Object.keys(session.risk_factors || {}).length === 0 ? (
               <p className="text-gray-500 text-sm">No risk factors detected</p>
             ) : (
               <div className="space-y-2">
-                {Object.entries(session.risk_factors).map(([key, factor]: [string, any]) => (
+                {Object.entries(session.risk_factors || {}).map(([key, factor]: [string, any]) => (
                   <div key={key} className="flex items-center justify-between p-2 rounded-lg bg-gray-50">
                     <span className="text-sm font-medium">{key.replace('_', ' ')}</span>
                     <div className="flex items-center gap-2">
-                      <Progress value={factor.weight * 100} max={100} size="sm" className="w-32" color="warning" />
-                      <span className="text-xs text-gray-500">{(factor.weight * 100).toFixed(0)}%</span>
+                      <Progress value={(factor?.weight || 0) * 100} max={100} size="sm" className="w-32" color="warning" />
+                      <span className="text-xs text-gray-500">{((factor?.weight || 0) * 100).toFixed(0)}%</span>
                     </div>
                   </div>
                 ))}

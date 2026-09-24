@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, Literal
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, AliasChoices
 from app.models.models import RiskTier, SessionStatus
 
 
@@ -132,13 +132,18 @@ class AuditLogResponse(BaseModel):
     ip_address: str
     risk_score: float
     risk_tier: RiskTier
-    metadata: dict
+    metadata: dict = Field(default_factory=dict, validation_alias=AliasChoices("audit_metadata", "metadata"))
     created_at: datetime
 
 
 class RevokeSessionRequest(BaseModel):
     session_ids: list[int]
     reason: str = "Admin revocation"
+
+
+class UserRevokeSessionRequest(BaseModel):
+    reason: Optional[str] = "User requested session revocation"
+
 
 
 class RiskAssessmentResponse(BaseModel):
@@ -151,16 +156,16 @@ class RiskAssessmentResponse(BaseModel):
 
 class GeoIPResponse(BaseModel):
     ip: str
-    country: Optional[str]
-    country_code: Optional[str]
-    city: Optional[str]
-    region: Optional[str]
-    latitude: Optional[float]
-    longitude: Optional[float]
-    isp: Optional[str]
-    org: Optional[str]
-    asn: Optional[str]
-    timezone: Optional[str]
+    country: Optional[str] = None
+    country_code: Optional[str] = None
+    city: Optional[str] = None
+    region: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    isp: Optional[str] = None
+    org: Optional[str] = None
+    asn: Optional[str] = None
+    timezone: Optional[str] = None
     is_vpn: bool = False
     is_proxy: bool = False
     is_tor: bool = False

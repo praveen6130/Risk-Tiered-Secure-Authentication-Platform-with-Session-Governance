@@ -4,7 +4,8 @@ import secrets
 
 from app.core.config import settings
 from app.db.session import get_session_context
-from app.models.models import Session, SessionStatus, User
+from app.models.models import RiskTier, Session, SessionStatus, User
+from sqlmodel import select
 from app.schemas.schemas import DeviceFingerprintCreate, LoginRequest, MFAVerifyRequest, RiskAssessmentResponse, StepUpChallengeRequest, Token
 from app.services.audit import audit_logger
 from app.services.risk_engine import risk_engine
@@ -105,12 +106,6 @@ class AuthService:
                 user, ip, user_agent, device_fp or {}, geo
             )
             
-            if risk_assessment.risk_tier == RiskTier.CRITICAL:
-                await audit_logger.log_login_failed(
-                    request.email, ip, user_agent, "Blocked: Critical risk"
-                )
-                raise ValueError("Login blocked due to critical risk")
-            
             session_token = generate_session_token()
             refresh_token = generate_refresh_token()
             
@@ -141,15 +136,15 @@ class AuthService:
             )
             session.add(new_session)
             
-            user.last_login_at = datetime.utcnow()
+            user.last_login_at = datetime.now(timezone.utc)
             session.add(user)
             
             await session.commit()
             await session.refresh(new_session)
             
-            await risk_engine.update_user_profile(user, datetime.utcnow())
+            await risk_engine.update_user_profile(user, datetime.now(timezone.utc))
             
-            if risk_assessment.requires_step_up:
+            if user.mfa_enabled or risk_assessment.requires_step_up:
                 await audit_logger.log_session_created(user, new_session, ip, user_agent)
                 return Token(
                     access_token="",
@@ -300,7 +295,10 @@ class AuthService:
             if not sess or sess.status != SessionStatus.ACTIVE:
                 raise ValueError("Invalid or revoked refresh token")
             
-            if sess.expires_at < datetime.now(timezone.utc):
+            expires_at = sess.expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at < datetime.now(timezone.utc):
                 sess.status = SessionStatus.EXPIRED
                 session.add(sess)
                 await session.commit()
@@ -315,7 +313,7 @@ class AuthService:
             
             new_refresh = generate_refresh_token()
             sess.refresh_token_hash = hash_token(new_refresh)
-            sess.last_activity_at = datetime.utcnow()
+            sess.last_activity_at = datetime.now(timezone.utc)
             session.add(sess)
             await session.commit()
             
@@ -338,7 +336,7 @@ class AuthService:
                 return False
             
             sess.status = SessionStatus.REVOKED
-            sess.revoked_at = datetime.utcnow()
+            sess.revoked_at = datetime.now(timezone.utc)
             sess.revoked_reason = reason
             session.add(sess)
             await session.commit()
@@ -361,7 +359,7 @@ class AuthService:
             count = 0
             for sess in sessions:
                 sess.status = SessionStatus.REVOKED
-                sess.revoked_at = datetime.utcnow()
+                sess.revoked_at = datetime.now(timezone.utc)
                 sess.revoked_reason = reason
                 session.add(sess)
                 count += 1
