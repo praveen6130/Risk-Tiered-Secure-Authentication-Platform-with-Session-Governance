@@ -41,12 +41,14 @@ api.interceptors.response.use(
   (response) => {
     // Netlify Fallback: Netlify's SPA rewrite rule (/* -> /index.html 200) causes API requests
     // to return 200 OK with the HTML content of index.html when no backend server is running.
-    if (
+    const isHtml =
       typeof response.data === 'string' &&
-      (response.data.trim().startsWith('<!doctype') ||
-       response.data.trim().startsWith('<!DOCTYPE') ||
-       response.data.trim().startsWith('<html'))
-    ) {
+      (response.data.includes('<!DOCTYPE') ||
+       response.data.includes('<!doctype') ||
+       response.data.includes('<html') ||
+       (response.headers && typeof response.headers['content-type'] === 'string' && response.headers['content-type'].includes('text/html')));
+
+    if (isHtml) {
       let parsedData: any = response.config.data;
       if (typeof parsedData === 'string') {
         try {
@@ -73,17 +75,32 @@ api.interceptors.response.use(
           });
         }
       }
+      // Guarantee HTML string never reaches app components expecting JSON
+      return {
+        ...response,
+        data: [],
+        status: 200,
+      };
     }
     return response;
   },
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-    // Netlify Fallback: If running on a static host where the Python API endpoint returns 404 or network error
-    if (
-      (error.response?.status === 404 || !error.response || error.code === 'ERR_NETWORK') &&
-      originalRequest?.url
-    ) {
+    // Netlify Fallback: If running on a static host where the Python API endpoint returns 404, 405, 502, HTML or network error
+    const isStaticDeployError =
+      !error.response ||
+      error.response.status === 404 ||
+      error.response.status === 405 ||
+      error.response.status === 502 ||
+      error.response.status === 504 ||
+      error.code === 'ERR_NETWORK' ||
+      (typeof error.response?.data === 'string' &&
+       (error.response.data.includes('<!DOCTYPE') ||
+        error.response.data.includes('<!doctype') ||
+        error.response.data.includes('<html')));
+
+    if (isStaticDeployError && originalRequest?.url) {
       let parsedData: any = originalRequest.data;
       if (typeof parsedData === 'string') {
         try {

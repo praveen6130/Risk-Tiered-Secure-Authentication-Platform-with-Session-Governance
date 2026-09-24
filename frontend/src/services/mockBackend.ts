@@ -165,8 +165,18 @@ export function getMockOTP(secret: string = 'JBSWY3DPEHPK3PXP') {
   return { code, seconds_remaining: secondsRemaining, secret };
 }
 
+export function normalizeApiUrl(url: string): string {
+  if (!url) return '';
+  let clean = url.replace(/^[a-zA-Z]+:\/\/[^/]+/, '');
+  clean = clean.split('?')[0];
+  clean = clean.replace(/^\/?api\/v1\/?/, '/');
+  if (!clean.startsWith('/')) clean = '/' + clean;
+  if (clean.endsWith('/') && clean.length > 1) clean = clean.slice(0, -1);
+  return clean.toLowerCase();
+}
+
 export function handleMockRequest(url: string, method: string = 'GET', data?: any): { status: number; data: any } | null {
-  const cleanUrl = url.replace(/^[a-zA-Z]+:\/\/[^/]+/, '').replace(/^\/api\/v1/, '').split('?')[0];
+  const cleanUrl = normalizeApiUrl(url);
   const db = loadData();
 
   // Helper response wrapper
@@ -541,6 +551,36 @@ export function handleMockRequest(url: string, method: string = 'GET', data?: an
     });
     saveData(db);
     return ok({ message: 'All user sessions revoked' });
+  }
+
+  // 21. MFA setup / verify / disable
+  if (cleanUrl === '/auth/mfa/setup') {
+    return ok({
+      secret: 'JBSWY3DPEHPK3PXP',
+      qr_uri: 'otpauth://totp/RiskAuth:demo?secret=JBSWY3DPEHPK3PXP&issuer=RiskAuth',
+      backup_codes: ['A1B2-C3D4', 'E5F6-G7H8', 'J9K0-L1M2', 'N3P4-Q5R6'],
+    });
+  }
+
+  if (cleanUrl === '/auth/mfa/verify' || cleanUrl === '/auth/mfa/disable') {
+    return ok({ message: 'MFA updated successfully' });
+  }
+
+  // 22. Devices
+  if (cleanUrl === '/device/fingerprints') {
+    return ok([]);
+  }
+
+  // 23. Generic safety fallback for static Netlify hosting:
+  // Guarantees no auth or admin endpoint ever resolves to null / HTML
+  if (cleanUrl.startsWith('/auth/') || cleanUrl.startsWith('/admin/') || cleanUrl.startsWith('/device/')) {
+    if (method.toUpperCase() === 'GET') {
+      if (cleanUrl.endsWith('s') || cleanUrl.includes('logs') || cleanUrl.includes('list')) {
+        return ok([]);
+      }
+      return ok({});
+    }
+    return ok({ success: true, message: 'Simulated action succeeded' });
   }
 
   return null;

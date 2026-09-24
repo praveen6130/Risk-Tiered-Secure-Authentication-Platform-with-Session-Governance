@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -72,6 +73,24 @@ app.include_router(device.router, prefix=settings.API_PREFIX)
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc):
     return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = exc.errors()
+    messages = []
+    for err in errors:
+        loc = " -> ".join([str(l) for l in err.get("loc", []) if l != "body"])
+        msg = err.get("msg", "Validation error")
+        if loc:
+            messages.append(f"{loc}: {msg}")
+        else:
+            messages.append(msg)
+    error_summary = "; ".join(messages) if messages else "Invalid request data"
+    return JSONResponse(
+        status_code=422,
+        content={"detail": error_summary, "errors": errors},
+    )
 
 
 @app.exception_handler(500)

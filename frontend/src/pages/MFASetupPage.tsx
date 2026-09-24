@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authApi } from '../services/api';
+import { extractErrorMessage } from '../utils/errorMessage';
 import { Copy, Check, AlertCircle, Download, QrCode, Key } from 'lucide-react';
 import { Button, Card, CardContent, CardHeader, CardTitle, CardDescription, Progress } from '../components/ui';
 import { toast } from 'sonner';
@@ -33,7 +34,7 @@ export function MFASetupPage() {
       setSetupData(response.data);
       startTimer();
     } catch (error) {
-      toast.error('Failed to load MFA setup');
+      toast.error(extractErrorMessage(error, 'Failed to load MFA setup'));
     } finally {
       setIsLoading(false);
     }
@@ -63,7 +64,7 @@ export function MFASetupPage() {
       toast.success('MFA enabled successfully!');
       await refreshUser();
     } catch (error) {
-      toast.error('Invalid code. Please try again.');
+      toast.error(extractErrorMessage(error, 'Invalid code. Please try again.'));
     } finally {
       setIsLoading(false);
     }
@@ -223,7 +224,7 @@ export function MFASetupPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-3 max-h-64 overflow-y-auto">
-                {setupData.backup_codes.map((code, index) => (
+                {(setupData?.backup_codes || []).map((code, index) => (
                   <motion.div
                     key={index}
                     initial={{ opacity: 0, y: 10 }}

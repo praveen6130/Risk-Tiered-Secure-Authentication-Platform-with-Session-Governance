@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { extractErrorMessage } from '../utils/errorMessage';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import {
@@ -46,7 +47,7 @@ export function AdminDashboard() {
       setSelectedSessions([]);
       toast.success('Sessions revoked');
     },
-    onError: (error: any) => toast.error(error.response?.data?.detail || 'Failed to revoke sessions'),
+    onError: (error: any) => toast.error(extractErrorMessage(error, 'Failed to revoke sessions')),
   });
 
   const revokeUserMutation = useMutation({
@@ -57,7 +58,7 @@ export function AdminDashboard() {
       setDetailSession(null);
       toast.success('All sessions for user revoked');
     },
-    onError: (error: any) => toast.error(error.response?.data?.detail || 'Failed to revoke user sessions'),
+    onError: (error: any) => toast.error(extractErrorMessage(error, 'Failed to revoke user sessions')),
   });
 
   const sessions = useMemo(() => {
@@ -511,7 +512,7 @@ function SessionDetailModal({
         </CardHeader>
         <CardContent>
           <div className="max-h-64 overflow-y-auto space-y-2">
-            {session.audit_logs.slice(0, 20).map(log => (
+            {(session.audit_logs || []).slice(0, 20).map(log => (
               <motion.div
                 key={log.id}
                 initial={{ opacity: 0, x: -10 }}

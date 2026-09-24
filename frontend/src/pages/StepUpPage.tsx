@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { extractErrorMessage } from '../utils/errorMessage';
 import { motion } from 'framer-motion';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { authApi } from '../services/api';
@@ -138,7 +139,7 @@ export function StepUpPage() {
       }
       handleSuccess();
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Verification failed');
+      toast.error(extractErrorMessage(error, 'Verification failed'));
     } finally {
       setIsVerifying(false);
     }
@@ -280,7 +281,7 @@ export function StepUpPage() {
                         }
                         handleSuccess();
                       } catch (error: any) {
-                        toast.error(error.response?.data?.detail || 'Approval failed');
+                        toast.error(extractErrorMessage(error, 'Approval failed'));
                       } finally {
                         setIsVerifying(false);
                       }

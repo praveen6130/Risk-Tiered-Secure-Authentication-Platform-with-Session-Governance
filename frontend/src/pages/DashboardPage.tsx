@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { extractErrorMessage } from '../utils/errorMessage';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -41,7 +42,7 @@ export function DashboardPage() {
       setDetailSession(null);
       toast.success('Session revoked');
     },
-    onError: (error: any) => toast.error(error.response?.data?.detail || 'Failed to revoke session'),
+    onError: (error: any) => toast.error(extractErrorMessage(error, 'Failed to revoke session')),
   });
 
   const revokeAllMutation = useMutation({
@@ -51,7 +52,7 @@ export function DashboardPage() {
       setShowRevokeAll(false);
       toast.success('All sessions revoked');
     },
-    onError: (error: any) => toast.error(error.response?.data?.detail || 'Failed to revoke all sessions'),
+    onError: (error: any) => toast.error(extractErrorMessage(error, 'Failed to revoke all sessions')),
   });
 
   const approveMutation = useMutation({
@@ -61,7 +62,7 @@ export function DashboardPage() {
       queryClient.invalidateQueries({ queryKey: ['userSessions'] });
       toast.success('Login approved! The new device can now proceed.');
     },
-    onError: (error: any) => toast.error(error.response?.data?.detail || 'Failed to approve session'),
+    onError: (error: any) => toast.error(extractErrorMessage(error, 'Failed to approve session')),
   });
 
   const denyMutation = useMutation({
@@ -71,7 +72,7 @@ export function DashboardPage() {
       queryClient.invalidateQueries({ queryKey: ['userSessions'] });
       toast.error('Login denied and blocked.');
     },
-    onError: (error: any) => toast.error(error.response?.data?.detail || 'Failed to deny session'),
+    onError: (error: any) => toast.error(extractErrorMessage(error, 'Failed to deny session')),
   });
 
   const rawSessions = sessionsData?.data;

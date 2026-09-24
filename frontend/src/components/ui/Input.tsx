@@ -46,7 +46,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         </div>
         {error && (
           <p id={`${inputId}-error`} className="mt-1.5 text-sm text-red-600" role="alert">
-            {error}
+            {typeof error === 'object' ? ((error as any)?.message || (error as any)?.msg || JSON.stringify(error)) : String(error)}
           </p>
         )}
         {helperText && !error && (

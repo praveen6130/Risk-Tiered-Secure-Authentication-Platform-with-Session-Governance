@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { extractErrorMessage } from '../utils/errorMessage';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -83,17 +84,7 @@ export function LoginPage() {
         navigate('/dashboard');
       }
     } catch (error: any) {
-      const detail = error.response?.data?.detail;
-      let message = 'Login failed. Please try again.';
-      if (typeof detail === 'string') {
-        message = detail;
-      } else if (Array.isArray(detail)) {
-        message = detail.map((d: any) => d.msg || (typeof d === 'string' ? d : JSON.stringify(d))).join(', ');
-      } else if (detail && typeof detail === 'object') {
-        message = JSON.stringify(detail);
-      } else if (error.message) {
-        message = error.message;
-      }
+      const message = extractErrorMessage(error, 'Login failed. Please try again.');
       setErrors({ form: message });
       toast.error(message);
     } finally {
