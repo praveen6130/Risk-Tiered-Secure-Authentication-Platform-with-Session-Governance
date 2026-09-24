@@ -16,7 +16,6 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [detailSession, setDetailSession] = useState<Session | null>(null);
-  const [showRevokeAll, setShowRevokeAll] = useState(false);
 
   const { data: sessionsData, isLoading: sessionsLoading, refetch: refetchSessions } = useQuery({
     queryKey: ['userSessions'],
@@ -33,26 +32,6 @@ export function DashboardPage() {
     queryKey: ['userAuditLogs', user?.id],
     queryFn: () => authApi.getUserAuditLogs({ limit: 50 }),
     enabled: !!user?.id,
-  });
-
-  const revokeMutation = useMutation({
-    mutationFn: ({ id, reason }: { id: number; reason: string }) => authApi.revokeSession(id, reason),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['userSessions'] });
-      setDetailSession(null);
-      toast.success('Session revoked');
-    },
-    onError: (error: any) => toast.error(extractErrorMessage(error, 'Failed to revoke session')),
-  });
-
-  const revokeAllMutation = useMutation({
-    mutationFn: (reason: string) => authApi.logoutAll(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['userSessions'] });
-      setShowRevokeAll(false);
-      toast.success('All sessions revoked');
-    },
-    onError: (error: any) => toast.error(extractErrorMessage(error, 'Failed to revoke all sessions')),
   });
 
   const approveMutation = useMutation({
@@ -281,12 +260,6 @@ export function DashboardPage() {
                   <CardTitle className="text-lg">Your Sessions</CardTitle>
                   <p className="text-sm text-gray-500">{sessions.length} sessions total</p>
                 </div>
-                {sessions.some(s => s.status === 'active') && (
-                  <Button variant="outline" size="sm" onClick={() => setShowRevokeAll(true)}>
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Revoke All Other Sessions
-                  </Button>
-                )}
               </CardHeader>
 
               <CardContent className="p-0">
@@ -419,29 +392,14 @@ export function DashboardPage() {
 
       <Modal isOpen={!!detailSession} onClose={() => setDetailSession(null)} title="Session Details" size="lg">
         {detailSession && (
-          <SessionDetailView session={detailSession} onClose={() => setDetailSession(null)} onRevoke={(id, reason) => revokeMutation.mutate({ id, reason })} />
+          <SessionDetailView session={detailSession} onClose={() => setDetailSession(null)} />
         )}
-      </Modal>
-
-      <Modal isOpen={showRevokeAll} onClose={() => setShowRevokeAll(false)} title="Revoke All Other Sessions" size="md">
-        <div className="space-y-4">
-          <p className="text-gray-600">This will sign you out of all other devices and sessions. Your current session will remain active.</p>
-          <p className="text-sm text-amber-600">You will need to log in again on other devices.</p>
-          <div className="flex justify-end gap-3 pt-4">
-            <Button variant="outline" onClick={() => setShowRevokeAll(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={() => revokeAllMutation.mutate('User revoked all other sessions')}>
-              Revoke All Other Sessions
-            </Button>
-          </div>
-        </div>
       </Modal>
     </div>
   );
 }
 
-function SessionDetailView({ session, onClose, onRevoke }: { session: Session; onClose: () => void; onRevoke: (id: number, reason: string) => void }) {
-  const [reason, setReason] = useState('');
-  
+function SessionDetailView({ session, onClose }: { session: Session; onClose: () => void }) {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
@@ -508,18 +466,12 @@ function SessionDetailView({ session, onClose, onRevoke }: { session: Session; o
         </Card>
       </div>
 
-      {session.status === 'active' && (
-        <div className="pt-4 border-t border-gray-200">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Reason for revocation</label>
-          <Input value={reason} onChange={e => setReason(e.target.value)} placeholder="Enter reason..." />
-          <div className="flex justify-end gap-3 mt-4">
-            <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button variant="destructive" onClick={() => { onRevoke(session.id, reason); onClose(); }}>
-              Revoke This Session
-            </Button>
-          </div>
-        </div>
-      )}
+      <div className="pt-4 border-t border-gray-200 flex items-center justify-between">
+        <p className="text-xs text-gray-500">
+          Session security governance is managed by platform administrators.
+        </p>
+        <Button variant="outline" onClick={onClose}>Close</Button>
+      </div>
     </div>
   );
 }

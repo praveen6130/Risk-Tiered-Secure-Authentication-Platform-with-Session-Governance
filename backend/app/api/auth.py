@@ -354,13 +354,16 @@ async def revoke_session_by_id(
     body: UserRevokeSessionRequest = None,
     user: User = Depends(get_current_user),
 ):
+    if not user.is_superuser:
+        raise HTTPException(status_code=403, detail="Session revocation is restricted to administrators only")
+
     client_ip = request.client.host if request.client else "unknown"
     user_agent = request.headers.get("user-agent", "unknown")
-    reason = body.reason if body and body.reason else "User revoked session"
+    reason = body.reason if body and body.reason else "Admin revoked session"
     
     success = await auth_service.revoke_session(
         session_id,
-        user.id,
+        None,
         reason,
         client_ip,
         user_agent,

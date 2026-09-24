@@ -44,8 +44,10 @@ export function AdminDashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminSessions'] });
       queryClient.invalidateQueries({ queryKey: ['riskStats'] });
+      refetchSessions();
       setSelectedSessions([]);
-      toast.success('Sessions revoked');
+      setDetailSession(null);
+      toast.success('Session(s) successfully revoked');
     },
     onError: (error: any) => toast.error(extractErrorMessage(error, 'Failed to revoke sessions')),
   });
@@ -55,6 +57,7 @@ export function AdminDashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminSessions'] });
       queryClient.invalidateQueries({ queryKey: ['riskStats'] });
+      refetchSessions();
       setDetailSession(null);
       toast.success('All sessions for user revoked');
     },
@@ -346,14 +349,28 @@ export function AdminDashboard() {
                           </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <Button variant="ghost" size="sm" onClick={() => handleViewDetail(session)}>
+                              <Button variant="ghost" size="sm" onClick={() => handleViewDetail(session)} title="View Session Details">
                                 <Eye className="h-4 w-4" />
                               </Button>
                               {session.status === 'active' || session.status === 'step_up_required' ? (
-                                <Button variant="ghost" size="sm" onClick={() => revokeMutation.mutate({ ids: [session.id], reason: 'Admin revocation' })}>
-                                  <Trash2 className="h-4 w-4" />
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  className="h-8 px-2.5 text-xs font-semibold"
+                                  title={`Revoke Session #${session.id}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (window.confirm(`Revoke session #${session.id} for User #${session.user_id}?`)) {
+                                      revokeMutation.mutate({ ids: [session.id], reason: 'Admin revoked session' });
+                                    }
+                                  }}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 mr-1" />
+                                  Revoke
                                 </Button>
-                              ) : null}
+                              ) : (
+                                <span className="text-xs text-gray-400 font-mono italic">Revoked</span>
+                              )}
                             </div>
                           </td>
                         </motion.tr>
@@ -536,7 +553,7 @@ function SessionDetailModal({
           User ID: <span className="font-mono font-medium text-gray-700">{session.user_id}</span>
         </div>
         <div className="flex gap-2">
-          {session.status === 'active' && (
+          {(session.status === 'active' || session.status === 'step_up_required') && (
             <Button
               variant="outline"
               size="sm"
@@ -556,6 +573,7 @@ function SessionDetailModal({
             onClick={() => {
               if (window.confirm(`Are you sure you want to revoke ALL sessions for User #${session.user_id}?`)) {
                 onRevokeUser(session.user_id);
+                onClose();
               }
             }}
           >

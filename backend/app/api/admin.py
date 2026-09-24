@@ -95,7 +95,7 @@ async def revoke_sessions(
     revoked = 0
     for session_id in request.session_ids:
         success = await auth_service.revoke_session(
-            session_id, 0, request.reason, "admin", "admin"
+            session_id, None, request.reason, "admin", "admin"
         )
         if success:
             revoked += 1
@@ -111,6 +111,27 @@ async def revoke_all_user_sessions(
 ):
     count = await auth_service.revoke_all_sessions(user_id, reason, "admin", "admin")
     return {"revoked": count}
+
+
+@router.post("/users/{user_id}/revoke")
+async def revoke_user(
+    user_id: int,
+    reason: str = "Admin revoked user access",
+    admin: User = Depends(require_admin),
+):
+    if user_id == admin.id:
+        raise HTTPException(status_code=400, detail="Cannot revoke your own administrator account")
+    count = await auth_service.revoke_all_sessions(user_id, reason, "admin", "admin")
+    async with get_session() as session:
+        stmt = select(User).where(User.id == user_id)
+        result = await session.exec(stmt)
+        user = result.first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        user.is_active = False
+        session.add(user)
+        await session.commit()
+    return {"revoked": count, "user_id": user_id, "is_active": False}
 
 
 @router.get("/audit-logs", response_model=list[AuditLogResponse])
