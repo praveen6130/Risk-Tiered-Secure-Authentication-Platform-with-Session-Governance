@@ -1,0 +1,79 @@
+[project]
+name = "auth-platform"
+version = "0.1.0"
+description = "Risk-Tiered Secure Authentication Platform with Session Governance"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "sqlmodel>=0.0.14",
+    "pydantic>=2.5.0",
+    "pydantic[email]>=2.5.0",
+    "passlib[bcrypt]>=1.7.4",
+    "argon2-cffi>=23.1.0",
+    "pyotp>=2.9.0",
+    "qrcode[pil]>=7.4.2",
+    "python-jose[cryptography]>=3.3.0",
+    "slowapi>=0.1.9",
+    "redis>=5.0.0",
+    "httpx>=0.26.0",
+    "python-multipart>=0.0.6",
+    "python-dotenv>=1.0.0",
+    "pydantic-settings>=2.1.0",
+    "alembic>=1.13.0",
+    "structlog>=24.1.0",
+    "tenacity>=8.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "httpx>=0.26.0",
+    "faker>=25.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.8.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "httpx>=0.26.0",
+    "faker>=25.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.8.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "I", "UP", "W", "C90", "ANN", "ARG", "B", "COM", "D", "DTZ", "EXE", "FA", "ISC", "ICN", "INP", "PIE", "PT", "Q", "RET", "RSE", "SIM", "TCH", "TID", "TRY", "NPY", "PD", "PGH", "PL", "TRY", "T20"]
+ignore = ["ANN101", "ANN102", "ANN201", "ANN202", "ARG001", "ARG002", "B008", "C901", "D100", "D101", "D102", "D103", "D104", "D105", "D107", "ERA001", "EXE005", "INP001", "ISC001", "PIE796", "PLR0913", "PLR2004", "PT004", "PT006", "PT007", "PT008", "PT011", "PT012", "PT015", "PT018", "PT019", "RSE102", "SIM103", "SIM117", "TRY002", "TRY003", "TRY301", "UP006", "UP007", "UP035"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
