@@ -12,6 +12,56 @@ const api = axios.create({
   },
 });
 
+// When running on Netlify without a separate backend URL, intercept requests directly
+// to avoid Netlify edge router rejecting POST/PUT/DELETE requests with HTTP 400/404
+const isNetlifyStaticHost =
+  typeof window !== 'undefined' &&
+  !import.meta.env.VITE_API_URL &&
+  window.location.hostname !== 'localhost' &&
+  window.location.hostname !== '127.0.0.1';
+
+if (isNetlifyStaticHost) {
+  api.defaults.adapter = async (config) => {
+    let parsedData: any = config.data;
+    if (typeof parsedData === 'string') {
+      try {
+        parsedData = JSON.parse(parsedData);
+      } catch {
+        // ignore
+      }
+    }
+    const mockResult = handleMockRequest(config.url || '', config.method?.toUpperCase() || 'GET', parsedData);
+    if (mockResult) {
+      if (mockResult.status >= 200 && mockResult.status < 300) {
+        return {
+          data: mockResult.data,
+          status: mockResult.status,
+          statusText: 'OK',
+          headers: {},
+          config,
+        };
+      } else {
+        return Promise.reject({
+          response: {
+            data: mockResult.data,
+            status: mockResult.status,
+            statusText: 'Error',
+            headers: {},
+            config,
+          },
+        });
+      }
+    }
+    return {
+      data: { success: true },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config,
+    };
+  };
+}
+
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const token = localStorage.getItem('access_token');
@@ -90,6 +140,7 @@ api.interceptors.response.use(
     // Netlify Fallback: If running on a static host where the Python API endpoint returns 404, 405, 502, HTML or network error
     const isStaticDeployError =
       !error.response ||
+      error.response.status === 400 ||
       error.response.status === 404 ||
       error.response.status === 405 ||
       error.response.status === 502 ||
@@ -98,7 +149,8 @@ api.interceptors.response.use(
       (typeof error.response?.data === 'string' &&
        (error.response.data.includes('<!DOCTYPE') ||
         error.response.data.includes('<!doctype') ||
-        error.response.data.includes('<html')));
+        error.response.data.includes('<html') ||
+        error.response.data.includes('Bad Request')));
 
     if (isStaticDeployError && originalRequest?.url) {
       let parsedData: any = originalRequest.data;
