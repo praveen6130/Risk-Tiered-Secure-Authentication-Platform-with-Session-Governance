@@ -11,6 +11,27 @@ interface StoredData {
 
 const STORAGE_KEY = 'hth_auth_mock_db';
 
+/**
+ * Generate standard Argon2id password hash format matching FastAPI / argon2-cffi:
+ * $argon2id$v=19$m=65536,t=3,p=4$<salt>$<hash>
+ */
+export function generateArgon2idHash(password: string): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let seed = 0;
+  for (let i = 0; i < password.length; i++) {
+    seed = (seed * 31 + password.charCodeAt(i)) >>> 0;
+  }
+  let salt = '';
+  for (let i = 0; i < 22; i++) {
+    salt += chars.charAt((seed + i * 11) % chars.length);
+  }
+  let hash = '';
+  for (let i = 0; i < 43; i++) {
+    hash += chars.charAt((seed * (i + 3) + 19) % chars.length);
+  }
+  return `$argon2id$v=19$m=65536,t=3,p=4$${salt}$${hash}`;
+}
+
 function getInitialData(): StoredData {
   const now = new Date().toISOString();
   const past = new Date(Date.now() - 3600000).toISOString();
@@ -24,6 +45,7 @@ function getInitialData(): StoredData {
     mfa_enabled: false,
     created_at: past,
     last_login_at: now,
+    password_hash: '$argon2id$v=19$m=65536,t=3,p=4$q6Zp3P8vX1yW2zR4tU6oPq$F8e/Q4X6k5zY19bL7vWwJ1mH0q9R2sT4uV8xY1aB2c',
   };
 
   const demoUser: User = {
@@ -35,6 +57,31 @@ function getInitialData(): StoredData {
     mfa_enabled: true,
     created_at: past,
     last_login_at: now,
+    password_hash: '$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQxMjM0NTY3OA$K3jL8nO1pQ2rS4tU5vW6xY7zA8bC9dE0fG1hI2jK3l',
+  };
+
+  const user2: User = {
+    id: 3,
+    email: 'user2@example.com',
+    full_name: 'Bob Tiered User',
+    is_active: true,
+    is_superuser: false,
+    mfa_enabled: false,
+    created_at: past,
+    last_login_at: now,
+    password_hash: '$argon2id$v=19$m=65536,t=3,p=4$YW5vdGhlcnNhbHQxMjM0NQ$Z4xY9wV2uT7sR5qP3oM1kI8hF6dC4bA2zX0vU8tS6r',
+  };
+
+  const user3: User = {
+    id: 4,
+    email: 'user3@example.com',
+    full_name: 'Charlie Secure User',
+    is_active: true,
+    is_superuser: false,
+    mfa_enabled: true,
+    created_at: past,
+    last_login_at: now,
+    password_hash: '$argon2id$v=19$m=65536,t=3,p=4$dGhpcmRzYWx0ODk3NjU0MzI$M9kL5jH2gF8dC1aB4zX7vU0tS3rQ6oP9nM2kJ5hG8e',
   };
 
   const initialSessions: Session[] = [
@@ -127,7 +174,7 @@ function getInitialData(): StoredData {
 
   return {
     currentUser: null,
-    users: [sudoUser, demoUser],
+    users: [sudoUser, demoUser, user2, user3],
     sessions: initialSessions,
     auditLogs: initialAuditLogs,
   };
@@ -136,7 +183,22 @@ function getInitialData(): StoredData {
 function loadData(): StoredData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed: StoredData = JSON.parse(raw);
+      let updated = false;
+      parsed.users.forEach(u => {
+        if (!u.password_hash) {
+          u.password_hash = generateArgon2idHash(u.email === 'sudouser@gmail.com' ? 'supremeuser' : 'Password123!');
+          updated = true;
+        }
+      });
+      if (parsed.currentUser && !parsed.currentUser.password_hash) {
+        parsed.currentUser.password_hash = generateArgon2idHash(parsed.currentUser.email === 'sudouser@gmail.com' ? 'supremeuser' : 'Password123!');
+        updated = true;
+      }
+      if (updated) saveData(parsed);
+      return parsed;
+    }
   } catch {
     // fallback
   }
@@ -388,6 +450,7 @@ export function handleMockRequest(url: string, method: string = 'GET', data?: an
       mfa_enabled: false,
       created_at: new Date().toISOString(),
       last_login_at: null,
+      password_hash: generateArgon2idHash(password),
     };
     db.users.push(newUser);
     saveData(db);
@@ -516,9 +579,15 @@ export function handleMockRequest(url: string, method: string = 'GET', data?: an
     return ok(db.sessions);
   }
 
-  // 16. /admin/users
-  if (cleanUrl === '/admin/users') {
+  // 16. /admin/users or /auth/database-users
+  if (cleanUrl === '/admin/users' || cleanUrl === '/auth/database-users') {
     return ok(db.users);
+  }
+
+  if (cleanUrl === '/auth/database-reset' && method.toUpperCase() === 'POST') {
+    const initial = getInitialData();
+    saveData(initial);
+    return ok({ message: 'Database reset to initial state', users: initial.users });
   }
 
   // 17. /admin/risk/stats

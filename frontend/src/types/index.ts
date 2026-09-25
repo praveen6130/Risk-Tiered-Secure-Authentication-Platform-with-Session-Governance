@@ -7,6 +7,7 @@ export interface User {
   mfa_enabled: boolean;
   created_at: string;
   last_login_at: string | null;
+  password_hash?: string;
 }
 
 export interface Token {

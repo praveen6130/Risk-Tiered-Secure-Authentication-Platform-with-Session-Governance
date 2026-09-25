@@ -6,11 +6,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import zxcvbn from 'zxcvbn';
 import { useNavigate, Link } from 'react-router-dom';
-import { Eye, EyeOff, Loader2, AlertCircle, Shield } from 'lucide-react';
+import { Eye, EyeOff, Loader2, AlertCircle, Shield, Database } from 'lucide-react';
 import { getDeviceFingerprint, cn } from '../utils/fingerprint';
 import { useAuth } from '../context/AuthContext';
 import { Button, Input, Card, CardContent, CardHeader, CardTitle, CardDescription, Progress } from '../components/ui';
 import { toast } from 'sonner';
+import { DatabaseInspectorModal } from '../components/DatabaseInspectorModal';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -28,6 +29,7 @@ export function LoginPage() {
   const [passwordStrength, setPasswordStrength] = useState(0);
   const [fingerprint, setFingerprint] = useState<object | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showDbModal, setShowDbModal] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -197,8 +199,24 @@ export function LoginPage() {
               Sign up
             </Link>
           </p>
+
+          <div className="pt-2 border-t border-gray-100 flex items-center justify-center">
+            <button
+              type="button"
+              onClick={() => setShowDbModal(true)}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-primary-600 transition-colors py-1.5 px-3 rounded-lg hover:bg-gray-100 border border-gray-200"
+            >
+              <Database className="w-3.5 h-3.5 text-primary-500" />
+              <span>Inspect Database & Argon2id Hashes</span>
+            </button>
+          </div>
         </CardContent>
       </Card>
+
+      <DatabaseInspectorModal
+        isOpen={showDbModal}
+        onClose={() => setShowDbModal(false)}
+      />
     </motion.div>
   );
 }

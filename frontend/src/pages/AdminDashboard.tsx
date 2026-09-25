@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import {
   Users, Activity, AlertTriangle, Shield, Search, Filter, Download, ChevronDown, ChevronUp,
-  MapPin, Globe, Clock, Zap, Trash2, Eye, MoreHorizontal, Check, X, RefreshCw, LogOut, LayoutDashboard
+  MapPin, Globe, Clock, Zap, Trash2, Eye, MoreHorizontal, Check, X, RefreshCw, LogOut, LayoutDashboard, Database
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
@@ -12,6 +12,7 @@ import { adminApi, authApi } from '../services/api';
 import { Session, SessionDetail, RiskTier, SessionStatus, User, AuditLog } from '../types';
 import { Button, Input, Badge, Card, CardContent, CardHeader, CardTitle, Modal, Progress } from '../components/ui';
 import { formatDate, formatRelativeTime, getRiskTierColor, getRiskTierBg, cn } from '../utils/fingerprint';
+import { DatabaseInspectorModal } from '../components/DatabaseInspectorModal';
 import { toast } from 'sonner';
 
 const riskTierOrder: Record<RiskTier, number> = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -26,6 +27,7 @@ export function AdminDashboard() {
   const [selectedSessions, setSelectedSessions] = useState<number[]>([]);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'last_activity_at', direction: 'desc' });
   const [detailSession, setDetailSession] = useState<SessionDetail | null>(null);
+  const [isDbModalOpen, setIsDbModalOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 20;
 
@@ -158,6 +160,15 @@ export function AdminDashboard() {
                   User Dashboard
                 </Button>
               </Link>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsDbModalOpen(true)}
+                className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+              >
+                <Database className="h-4 w-4 mr-2" />
+                Database Credentials
+              </Button>
               <Button variant="outline" size="sm" onClick={() => { refetchSessions(); queryClient.invalidateQueries({ queryKey: ['riskStats'] }); }}>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh
@@ -425,6 +436,8 @@ export function AdminDashboard() {
           />
         )}
       </Modal>
+
+      <DatabaseInspectorModal isOpen={isDbModalOpen} onClose={() => setIsDbModalOpen(false)} />
     </div>
   );
 }

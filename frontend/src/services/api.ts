@@ -301,6 +301,12 @@ export const authApi = {
 
   getDemoOTP: (secret?: string) =>
     api.get<{ code: string; seconds_remaining: number; secret: string }>('/auth/demo-otp', { params: { secret } }),
+
+  getDatabaseUsers: () =>
+    api.get<User[]>('/auth/database-users'),
+
+  resetDatabase: () =>
+    api.post<{ message: string; users: User[] }>('/auth/database-reset'),
 };
 
 export const adminApi = {
