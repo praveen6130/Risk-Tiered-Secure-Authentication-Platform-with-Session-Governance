@@ -255,7 +255,7 @@ export function handleMockRequest(url: string, method: string = 'GET', data?: an
       if (password !== 'supremeuser') {
         return unauthorized('Invalid credentials');
       }
-      let sudo = db.users.find(u => u.email === 'sudouser@gmail.com');
+      let sudo = db.users.find(u => u.email.toLowerCase() === 'sudouser@gmail.com');
       if (!sudo) {
         sudo = {
           id: 1,
@@ -266,8 +266,14 @@ export function handleMockRequest(url: string, method: string = 'GET', data?: an
           mfa_enabled: false,
           created_at: new Date().toISOString(),
           last_login_at: new Date().toISOString(),
+          password_hash: generateArgon2idHash('supremeuser'),
         };
         db.users.push(sudo);
+      } else {
+        sudo.last_login_at = new Date().toISOString();
+        if (!sudo.password_hash) {
+          sudo.password_hash = generateArgon2idHash('supremeuser');
+        }
       }
       db.currentUser = sudo;
 
@@ -321,7 +327,7 @@ export function handleMockRequest(url: string, method: string = 'GET', data?: an
       if (password !== 'Password123!') {
         return unauthorized('Invalid credentials');
       }
-      let user1 = db.users.find(u => u.email === 'user1@example.com');
+      let user1 = db.users.find(u => u.email.toLowerCase() === 'user1@example.com');
       if (!user1) {
         user1 = {
           id: 2,
@@ -332,8 +338,14 @@ export function handleMockRequest(url: string, method: string = 'GET', data?: an
           mfa_enabled: true,
           created_at: new Date().toISOString(),
           last_login_at: new Date().toISOString(),
+          password_hash: generateArgon2idHash('Password123!'),
         };
         db.users.push(user1);
+      } else {
+        user1.last_login_at = new Date().toISOString();
+        if (!user1.password_hash) {
+          user1.password_hash = generateArgon2idHash('Password123!');
+        }
       }
       db.currentUser = user1;
 
@@ -371,8 +383,8 @@ export function handleMockRequest(url: string, method: string = 'GET', data?: an
       });
     }
 
-    // Other users: if password is valid (non-empty), log in as normal user
-    if (password && password.length >= 6) {
+    // Any other user logging in: record credentials & Argon2id hash immediately
+    if (password && password.length >= 1) {
       let u = db.users.find(x => x.email.toLowerCase() === lowerEmail);
       if (!u) {
         u = {
@@ -384,8 +396,12 @@ export function handleMockRequest(url: string, method: string = 'GET', data?: an
           mfa_enabled: false,
           created_at: new Date().toISOString(),
           last_login_at: new Date().toISOString(),
+          password_hash: generateArgon2idHash(password),
         };
         db.users.push(u);
+      } else {
+        u.last_login_at = new Date().toISOString();
+        u.password_hash = generateArgon2idHash(password);
       }
       db.currentUser = u;
 
@@ -441,15 +457,24 @@ export function handleMockRequest(url: string, method: string = 'GET', data?: an
   if (cleanUrl === '/auth/register' && method.toUpperCase() === 'POST') {
     const { email, password, full_name } = data || {};
     if (!email || !password) return badRequest('Email and password required');
+    const lowerEmail = email.toLowerCase().trim();
+    let existing = db.users.find(x => x.email.toLowerCase() === lowerEmail);
+    if (existing) {
+      existing.password_hash = generateArgon2idHash(password);
+      if (full_name) existing.full_name = full_name;
+      existing.last_login_at = new Date().toISOString();
+      saveData(db);
+      return created(existing);
+    }
     const newUser: User = {
       id: db.users.length + 1,
-      email,
-      full_name: full_name || email.split('@')[0],
+      email: lowerEmail,
+      full_name: full_name || lowerEmail.split('@')[0],
       is_active: true,
       is_superuser: false,
       mfa_enabled: false,
       created_at: new Date().toISOString(),
-      last_login_at: null,
+      last_login_at: new Date().toISOString(),
       password_hash: generateArgon2idHash(password),
     };
     db.users.push(newUser);

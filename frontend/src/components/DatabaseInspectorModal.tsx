@@ -2,13 +2,13 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Database, Copy, Check, Search, Shield, Key, Download, RefreshCw, 
-  X, Info, Lock, Terminal, Sparkles, CheckCircle2 
+  X, Info, Lock, Terminal, Sparkles, CheckCircle2, UserPlus, PlusCircle
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { authApi } from '../services/api';
 import { User } from '../types';
 import { Button, Badge, Card, CardContent } from './ui';
-import { formatDate } from '../utils/fingerprint';
+import { formatDate, formatRelativeTime } from '../utils/fingerprint';
 import { toast } from 'sonner';
 
 interface DatabaseInspectorModalProps {
@@ -21,12 +21,16 @@ export function DatabaseInspectorModal({ isOpen, onClose }: DatabaseInspectorMod
   const [search, setSearch] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [showArgonInfo, setShowArgonInfo] = useState(false);
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newName, setNewName] = useState('');
 
   const { data: usersData, isLoading, refetch } = useQuery({
     queryKey: ['databaseUsers'],
     queryFn: () => authApi.getDatabaseUsers(),
     enabled: isOpen,
-    refetchInterval: 5000,
+    refetchInterval: 3000,
   });
 
   const resetMutation = useMutation({
@@ -40,17 +44,51 @@ export function DatabaseInspectorModal({ isOpen, onClose }: DatabaseInspectorMod
     onError: () => toast.error('Failed to reset database'),
   });
 
+  const addUserMutation = useMutation({
+    mutationFn: async () => {
+      if (!newEmail.trim() || !newPassword.trim()) {
+        throw new Error('Email and password are required');
+      }
+      return authApi.register({
+        email: newEmail.trim(),
+        password: newPassword.trim(),
+        full_name: newName.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['databaseUsers'] });
+      queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
+      refetch();
+      setNewEmail('');
+      setNewPassword('');
+      setNewName('');
+      setShowAddUser(false);
+      toast.success('User credentials and Argon2id hash added to database!');
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to add user');
+    },
+  });
+
   const rawUsers = usersData?.data;
   const users: User[] = Array.isArray(rawUsers) ? rawUsers : (Array.isArray(usersData) ? (usersData as any) : []);
 
   const filteredUsers = useMemo(() => {
-    if (!search.trim()) return users;
-    const q = search.toLowerCase();
-    return users.filter(u => 
-      u.email.toLowerCase().includes(q) || 
-      (u.full_name && u.full_name.toLowerCase().includes(q)) ||
-      (u.password_hash && u.password_hash.toLowerCase().includes(q))
-    );
+    let result = users;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = users.filter(u => 
+        u.email.toLowerCase().includes(q) || 
+        (u.full_name && u.full_name.toLowerCase().includes(q)) ||
+        (u.password_hash && u.password_hash.toLowerCase().includes(q))
+      );
+    }
+    // Sort so newly logged in and newly registered users appear first
+    return [...result].sort((a, b) => {
+      const timeA = new Date(a.last_login_at || a.created_at || 0).getTime();
+      const timeB = new Date(b.last_login_at || b.created_at || 0).getTime();
+      return timeB - timeA;
+    });
   }, [users, search]);
 
   const handleCopy = (text: string, identifier: string, label: string) => {
@@ -173,13 +211,22 @@ export function DatabaseInspectorModal({ isOpen, onClose }: DatabaseInspectorMod
 
             <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
               <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAddUser(!showAddUser)}
+                className="text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+              >
+                <UserPlus className="h-3.5 w-3.5 mr-1" />
+                {showAddUser ? 'Close Form' : 'Add Credential'}
+              </Button>
+              <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowArgonInfo(!showArgonInfo)}
                 className="text-xs text-emerald-700 hover:bg-emerald-50"
               >
                 <Info className="h-4 w-4 mr-1" />
-                {showArgonInfo ? 'Hide Argon2id Specs' : 'How Argon2id Works'}
+                {showArgonInfo ? 'Hide Specs' : 'Argon2id Specs'}
               </Button>
               <Button
                 variant="outline"
@@ -195,6 +242,59 @@ export function DatabaseInspectorModal({ isOpen, onClose }: DatabaseInspectorMod
               </Button>
             </div>
           </div>
+
+          {/* Quick Add User Drawer */}
+          {showAddUser && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="bg-emerald-50/70 p-4 border-b border-emerald-200 text-xs"
+            >
+              <div className="max-w-2xl space-y-3">
+                <div className="flex items-center gap-2 text-emerald-900 font-semibold text-sm">
+                  <PlusCircle className="h-4 w-4 text-emerald-600" />
+                  <span>Register & Encrypt New User Credentials into Database</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <input
+                    type="email"
+                    placeholder="User Email *"
+                    value={newEmail}
+                    onChange={e => setNewEmail(e.target.value)}
+                    className="p-2 border border-emerald-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Full Name (optional)"
+                    value={newName}
+                    onChange={e => setNewName(e.target.value)}
+                    className="p-2 border border-emerald-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                  <input
+                    type="password"
+                    placeholder="Password *"
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    className="p-2 border border-emerald-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  <p className="text-[11px] text-emerald-700">
+                    The platform will immediately salt and compute an RFC 9106 Argon2id hash (<span className="font-mono">m=65536, t=3, p=4</span>) for this password.
+                  </p>
+                  <Button
+                    size="sm"
+                    loading={addUserMutation.isPending}
+                    onClick={() => addUserMutation.mutate()}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs px-4"
+                  >
+                    Save & Hash Credential
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          )}
 
           {/* Argon2id Explainer Banner */}
           {showArgonInfo && (
@@ -264,13 +364,29 @@ export function DatabaseInspectorModal({ isOpen, onClose }: DatabaseInspectorMod
                                 {isEmailCopied ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
                               </button>
                             </div>
-                            <span className="text-xs text-gray-500">
-                              {user.full_name || 'No full name'} • Joined {formatDate(user.created_at)}
+                            <span className="text-xs text-gray-500 flex flex-wrap items-center gap-1.5 mt-0.5">
+                              <span>{user.full_name || 'No full name'}</span>
+                              <span>•</span>
+                              <span>Joined {formatDate(user.created_at)}</span>
+                              {user.last_login_at && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-emerald-700 font-medium">
+                                    Active {formatRelativeTime(user.last_login_at)}
+                                  </span>
+                                </>
+                              )}
                             </span>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-2">
+                          {user.last_login_at && (
+                            <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              Active
+                            </span>
+                          )}
+
                           {user.is_superuser ? (
                             <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-100 text-purple-800 border border-purple-200">
                               Supreme Admin
