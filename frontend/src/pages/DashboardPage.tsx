@@ -3,13 +3,12 @@ import { extractErrorMessage } from '../utils/errorMessage';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { LogOut, Users, Shield, Activity, Zap, Globe, Trash2, ChevronDown, ChevronUp, RefreshCw, Settings, Bell, LayoutDashboard, CheckCircle2, XCircle, AlertCircle, Laptop, Database } from 'lucide-react';
+import { LogOut, Users, Shield, Activity, Zap, Globe, Trash2, ChevronDown, ChevronUp, RefreshCw, Settings, Bell, LayoutDashboard, CheckCircle2, XCircle, AlertCircle, Laptop } from 'lucide-react';
 import { authApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Session, User, AuditLog, RiskTier, SessionStatus } from '../types';
 import { Button, Badge, Card, CardContent, CardHeader, CardTitle, Modal, Progress, Input } from '../components/ui';
 import { formatDate, formatRelativeTime, getRiskTierColor, getRiskTierBg, cn } from '../utils/fingerprint';
-import { DatabaseInspectorModal } from '../components/DatabaseInspectorModal';
 import { toast } from 'sonner';
 
 export function DashboardPage() {
@@ -17,7 +16,6 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [detailSession, setDetailSession] = useState<Session | null>(null);
-  const [isDbModalOpen, setIsDbModalOpen] = useState(false);
 
   const { data: sessionsData, isLoading: sessionsLoading, refetch: refetchSessions } = useQuery({
     queryKey: ['userSessions'],
@@ -110,15 +108,6 @@ export function DashboardPage() {
                   </Button>
                 </Link>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsDbModalOpen(true)}
-                className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-              >
-                <Database className="h-4 w-4 mr-2" />
-                Database Credentials
-              </Button>
               <Button variant="outline" size="sm" onClick={() => { refetchSessions(); refreshUser(); }}>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh
@@ -427,8 +416,6 @@ export function DashboardPage() {
           <SessionDetailView session={detailSession} onClose={() => setDetailSession(null)} />
         )}
       </Modal>
-
-      <DatabaseInspectorModal isOpen={isDbModalOpen} onClose={() => setIsDbModalOpen(false)} />
     </div>
   );
 }
