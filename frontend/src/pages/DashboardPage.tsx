@@ -73,6 +73,18 @@ export function DashboardPage() {
 
   const handleViewDetail = (session: Session) => setDetailSession(session);
 
+  const handleDisableMFA = async () => {
+    const code = window.prompt('Enter your 6-digit authenticator code or backup code to disable Two-Factor Authentication:');
+    if (!code) return;
+    try {
+      await authApi.disableMFA(code.trim());
+      await refreshUser();
+      toast.success('Two-factor authentication disabled');
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Failed to disable MFA. Invalid code.'));
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="sticky top-0 z-40 bg-white border-b border-gray-200">
@@ -324,9 +336,18 @@ export function DashboardPage() {
                         <p className="text-sm text-gray-500">{user?.mfa_enabled ? 'Enabled' : 'Disabled'}</p>
                       </div>
                     </div>
-                    {!user?.mfa_enabled && (
+                    {!user?.mfa_enabled ? (
                       <Button variant="outline" size="sm" onClick={() => navigate('/mfa/setup')}>
                         Enable
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                        onClick={handleDisableMFA}
+                      >
+                        Disable
                       </Button>
                     )}
                   </div>

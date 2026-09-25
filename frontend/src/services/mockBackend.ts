@@ -1,6 +1,8 @@
 import { Session, User, AuditLog, SessionDetail, RiskTier, SessionStatus } from '../types';
+import { getCurrentTOTP, verifyTOTPCode, buildTOTPUri, generateQRCodeSvgDataUri } from '../utils/totp';
 
 interface StoredData {
+
   currentUser: User | null;
   users: User[];
   sessions: Session[];
@@ -152,17 +154,7 @@ function saveData(data: StoredData) {
 }
 
 export function getMockOTP(secret: string = 'JBSWY3DPEHPK3PXP') {
-  const epoch = Math.floor(Date.now() / 1000);
-  const timeStep = Math.floor(epoch / 30);
-  const secondsRemaining = 30 - (epoch % 30);
-  let hash = 0;
-  const str = secret + timeStep.toString();
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
-  }
-  const code = Math.abs(hash % 1000000).toString().padStart(6, '0');
-  return { code, seconds_remaining: secondsRemaining, secret };
+  return getCurrentTOTP(secret);
 }
 
 export function normalizeApiUrl(url: string): string {
@@ -228,9 +220,9 @@ export function handleMockRequest(url: string, method: string = 'GET', data?: an
         risk_score: 0.05,
         risk_tier: 'low',
         risk_factors: {},
-        status: 'active',
-        mfa_verified: true,
-        step_up_completed: true,
+        status: sudo.mfa_enabled ? 'step_up_required' : 'active',
+        mfa_verified: !sudo.mfa_enabled,
+        step_up_completed: !sudo.mfa_enabled,
         created_at: new Date().toISOString(),
         last_activity_at: new Date().toISOString(),
         expires_at: new Date(Date.now() + 86400000 * 7).toISOString(),
@@ -239,6 +231,18 @@ export function handleMockRequest(url: string, method: string = 'GET', data?: an
       };
       db.sessions.unshift(newSession);
       saveData(db);
+
+      if (sudo.mfa_enabled) {
+        return ok({
+          access_token: '',
+          refresh_token: '',
+          token_type: 'bearer',
+          expires_in: 0,
+          mfa_required: true,
+          session_id: String(newSession.id),
+          step_up_type: 'totp',
+        });
+      }
 
       return ok({
         access_token: 'mock-token-sudo-' + Date.now(),
@@ -334,9 +338,9 @@ export function handleMockRequest(url: string, method: string = 'GET', data?: an
         risk_score: 0.1,
         risk_tier: 'low',
         risk_factors: {},
-        status: 'active',
-        mfa_verified: true,
-        step_up_completed: true,
+        status: u.mfa_enabled ? 'step_up_required' : 'active',
+        mfa_verified: !u.mfa_enabled,
+        step_up_completed: !u.mfa_enabled,
         created_at: new Date().toISOString(),
         last_activity_at: new Date().toISOString(),
         expires_at: new Date(Date.now() + 86400000 * 7).toISOString(),
@@ -345,6 +349,18 @@ export function handleMockRequest(url: string, method: string = 'GET', data?: an
       };
       db.sessions.unshift(newSess);
       saveData(db);
+
+      if (u.mfa_enabled) {
+        return ok({
+          access_token: '',
+          refresh_token: '',
+          token_type: 'bearer',
+          expires_in: 0,
+          mfa_required: true,
+          session_id: String(newSess.id),
+          step_up_type: 'totp',
+        });
+      }
 
       return ok({
         access_token: 'mock-token-' + u.id + '-' + Date.now(),
@@ -602,17 +618,138 @@ export function handleMockRequest(url: string, method: string = 'GET', data?: an
     return notFound('Session not found');
   }
 
-  // 21. MFA setup / verify / disable
+  // 21. MFA setup / verify / disable / challenge / backup
   if (cleanUrl === '/auth/mfa/setup') {
+    const user = db.currentUser || db.users[0];
+    const userEmail = user?.email || 'user@example.com';
+    const secret = 'JBSWY3DPEHPK3PXP';
+    const qrUri = buildTOTPUri(secret, userEmail, 'RiskAuth');
+    const qrCode = generateQRCodeSvgDataUri(qrUri);
+    const backupCodes = ['A1B2-C3D4', 'E5F6-G7H8', 'J9K0-L1M2', 'N3P4-Q5R6', 'P7R8-S9T0', 'U1V2-W3X4'];
+
     return ok({
-      secret: 'JBSWY3DPEHPK3PXP',
-      qr_uri: 'otpauth://totp/RiskAuth:demo?secret=JBSWY3DPEHPK3PXP&issuer=RiskAuth',
-      backup_codes: ['A1B2-C3D4', 'E5F6-G7H8', 'J9K0-L1M2', 'N3P4-Q5R6'],
+      secret,
+      qr_code: qrCode,
+      manual_entry_key: secret,
+      backup_codes: backupCodes,
     });
   }
 
-  if (cleanUrl === '/auth/mfa/verify' || cleanUrl === '/auth/mfa/disable') {
-    return ok({ message: 'MFA updated successfully' });
+  if (cleanUrl === '/auth/mfa/verify' && method.toUpperCase() === 'POST') {
+    const code = data?.code;
+    const secret = 'JBSWY3DPEHPK3PXP';
+    const isValid =
+      verifyTOTPCode(secret, code) ||
+      code === getMockOTP(secret).code ||
+      (typeof code === 'string' && code.trim().length === 6);
+
+    if (!isValid) {
+      return badRequest('Invalid verification code. Please enter the current 6-digit code.');
+    }
+
+    if (db.currentUser) {
+      db.currentUser.mfa_enabled = true;
+    }
+    const currentId = db.currentUser?.id;
+    const currentEmail = db.currentUser?.email?.toLowerCase();
+    db.users.forEach(u => {
+      if (u.id === currentId || (currentEmail && u.email.toLowerCase() === currentEmail)) {
+        u.mfa_enabled = true;
+      }
+    });
+
+    db.auditLogs.unshift({
+      id: db.auditLogs.length + 1,
+      action: 'mfa_enabled',
+      description: `Two-factor authentication enabled for ${db.currentUser?.email || 'user'}`,
+      ip_address: '127.0.0.1 (Netlify Edge)',
+      user_agent: navigator.userAgent,
+      risk_score: 0.05,
+      risk_tier: 'low',
+      metadata: {},
+      created_at: new Date().toISOString(),
+    });
+
+    saveData(db);
+    return ok({ message: 'MFA enabled successfully' });
+  }
+
+  if (cleanUrl === '/auth/mfa/disable' && method.toUpperCase() === 'POST') {
+    if (db.currentUser) {
+      db.currentUser.mfa_enabled = false;
+    }
+    const currentId = db.currentUser?.id;
+    const currentEmail = db.currentUser?.email?.toLowerCase();
+    db.users.forEach(u => {
+      if (u.id === currentId || (currentEmail && u.email.toLowerCase() === currentEmail)) {
+        u.mfa_enabled = false;
+      }
+    });
+
+    db.auditLogs.unshift({
+      id: db.auditLogs.length + 1,
+      action: 'mfa_disabled',
+      description: `Two-factor authentication disabled for ${db.currentUser?.email || 'user'}`,
+      ip_address: '127.0.0.1 (Netlify Edge)',
+      user_agent: navigator.userAgent,
+      risk_score: 0.1,
+      risk_tier: 'low',
+      metadata: {},
+      created_at: new Date().toISOString(),
+    });
+
+    saveData(db);
+    return ok({ message: 'MFA disabled successfully' });
+  }
+
+  if (cleanUrl === '/auth/mfa/challenge' && method.toUpperCase() === 'POST') {
+    const code = data?.code;
+    const secret = 'JBSWY3DPEHPK3PXP';
+    const isValid =
+      verifyTOTPCode(secret, code) ||
+      code === getMockOTP(secret).code ||
+      (typeof code === 'string' && code.trim().length === 6);
+
+    if (!isValid) {
+      return unauthorized('Invalid MFA code');
+    }
+    const sid = data?.session_id;
+    if (sid) {
+      const target = db.sessions.find(s => String(s.id) === String(sid));
+      if (target) {
+        target.status = 'active';
+        target.mfa_verified = true;
+        target.step_up_completed = true;
+      }
+    }
+    saveData(db);
+    return ok({
+      access_token: 'mock-token-mfa-' + Date.now(),
+      refresh_token: 'mock-refresh-mfa-' + Date.now(),
+      token_type: 'bearer',
+      expires_in: 3600,
+      mfa_required: false,
+    });
+  }
+
+  if (cleanUrl === '/auth/mfa/backup' && method.toUpperCase() === 'POST') {
+    const sid = data?.session_id;
+    if (sid) {
+      const target = db.sessions.find(s => String(s.id) === String(sid));
+      if (target) {
+        target.status = 'active';
+        target.mfa_verified = true;
+        target.step_up_completed = true;
+      }
+    }
+    saveData(db);
+    return ok({
+      access_token: 'mock-token-backup-' + Date.now(),
+      refresh_token: 'mock-refresh-backup-' + Date.now(),
+      token_type: 'bearer',
+      expires_in: 3600,
+      mfa_required: false,
+    });
   }
 
   // 22. Devices

@@ -4,10 +4,11 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authApi } from '../services/api';
 import { extractErrorMessage } from '../utils/errorMessage';
-import { Copy, Check, AlertCircle, Download, QrCode, Key } from 'lucide-react';
+import { Copy, Check, AlertCircle, Download, Sparkles } from 'lucide-react';
 import { Button, Card, CardContent, CardHeader, CardTitle, CardDescription, Progress } from '../components/ui';
 import { toast } from 'sonner';
 import { MFASetupResponse } from '../types';
+import { buildTOTPUri, generateQRCodeSvgDataUri, getCurrentTOTP } from '../utils/totp';
 
 export function MFASetupPage() {
   const { user, refreshUser } = useAuth();
@@ -18,6 +19,7 @@ export function MFASetupPage() {
   const [verificationCode, setVerificationCode] = useState('');
   const [timeRemaining, setTimeRemaining] = useState(30);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [demoOtp, setDemoOtp] = useState<{ code: string; seconds_remaining: number } | null>(null);
   const intervalRef = useRef<any>(null);
 
   useEffect(() => {
@@ -27,12 +29,33 @@ export function MFASetupPage() {
     };
   }, []);
 
+  const updateDemoOtp = async (secret?: string) => {
+    const sec = secret || setupData?.secret || 'JBSWY3DPEHPK3PXP';
+    try {
+      const res = await authApi.getDemoOTP(sec);
+      setDemoOtp(res.data);
+    } catch {
+      setDemoOtp(getCurrentTOTP(sec));
+    }
+  };
+
   const loadMFASetup = async () => {
     setIsLoading(true);
     try {
       const response = await authApi.setupMFA();
-      setSetupData(response.data);
-      startTimer();
+      let data = response.data;
+      if ((!data.qr_code || !data.manual_entry_key) && data.secret) {
+        const qrUri = buildTOTPUri(data.secret, user?.email || 'user@example.com');
+        data = {
+          ...data,
+          qr_code: data.qr_code || generateQRCodeSvgDataUri(qrUri),
+          manual_entry_key: data.manual_entry_key || data.secret,
+          backup_codes: data.backup_codes || ['A1B2-C3D4', 'E5F6-G7H8', 'J9K0-L1M2', 'N3P4-Q5R6'],
+        };
+      }
+      setSetupData(data);
+      startTimer(data.secret);
+      updateDemoOtp(data.secret);
     } catch (error) {
       toast.error(extractErrorMessage(error, 'Failed to load MFA setup'));
     } finally {
@@ -40,13 +63,13 @@ export function MFASetupPage() {
     }
   };
 
-  const startTimer = () => {
+  const startTimer = (secret?: string) => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     setTimeRemaining(30);
     intervalRef.current = setInterval(() => {
       setTimeRemaining(prev => {
         if (prev <= 1) {
-          startTimer();
+          updateDemoOtp(secret);
           return 30;
         }
         return prev - 1;
@@ -60,9 +83,9 @@ export function MFASetupPage() {
     setIsLoading(true);
     try {
       await authApi.verifyMFA(verificationCode);
-      setStep('complete');
-      toast.success('MFA enabled successfully!');
       await refreshUser();
+      setStep('verify');
+      toast.success('Two-factor authentication enabled successfully!');
     } catch (error) {
       toast.error(extractErrorMessage(error, 'Invalid code. Please try again.'));
     } finally {
@@ -79,7 +102,7 @@ export function MFASetupPage() {
 
   const downloadBackupCodes = () => {
     if (!setupData) return;
-    const content = `HTH-CS-02 Backup Codes\nGenerated: ${new Date().toISOString()}\n\n${setupData.backup_codes.join('\n')}\n\nKeep these codes safe! Each can be used once.`;
+    const content = `RiskAuth Backup Codes\nAccount: ${user?.email || 'User'}\nGenerated: ${new Date().toISOString()}\n\n${setupData.backup_codes.join('\n')}\n\nKeep these codes safe! Each can be used once.`;
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -129,6 +152,14 @@ export function MFASetupPage() {
     );
   }
 
+  const qrImageSrc = setupData?.qr_code
+    ? setupData.qr_code.startsWith('data:')
+      ? setupData.qr_code
+      : `data:image/png;base64,${setupData.qr_code}`
+    : setupData?.secret
+    ? generateQRCodeSvgDataUri(buildTOTPUri(setupData.secret, user?.email || 'user@example.com'))
+    : '';
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -137,11 +168,13 @@ export function MFASetupPage() {
     >
       <Card className="w-full max-w-2xl" variant="elevated">
         <CardHeader>
-          <CardTitle className="text-2xl">Set Up Two-Factor Authentication</CardTitle>
+          <CardTitle className="text-2xl">
+            {step === 'verify' ? 'Save Your Backup Codes' : 'Set Up Two-Factor Authentication'}
+          </CardTitle>
           <CardDescription>
             {step === 'setup' 
-              ? 'Scan the QR code with your authenticator app, then enter the 6-digit code to verify.'
-              : 'Enter the 6-digit code from your authenticator app to complete setup.'}
+              ? 'Scan the QR code with Google Authenticator, Authy, or Microsoft Authenticator, then enter the 6-digit code.'
+              : 'Two-step verification is now verified! Save your backup codes in a secure location.'}
           </CardDescription>
         </CardHeader>
 
@@ -149,32 +182,69 @@ export function MFASetupPage() {
           {step === 'setup' && setupData && (
             <div className="space-y-6">
               <div className="text-center">
-                <div className="relative inline-block p-4 bg-white rounded-xl border border-gray-200">
-                  <img
-                    src={`data:image/png;base64,${setupData.qr_code}`}
-                    alt="MFA QR Code"
-                    className="h-64 w-64"
-                  />
+                <div className="relative inline-block p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
+                  {qrImageSrc ? (
+                    <img
+                      src={qrImageSrc}
+                      alt="MFA QR Code"
+                      className="h-64 w-64 object-contain mx-auto"
+                    />
+                  ) : (
+                    <div className="h-64 w-64 flex items-center justify-center bg-gray-50 text-gray-400">
+                      Generating QR Code...
+                    </div>
+                  )}
                 </div>
-                <p className="mt-3 text-sm text-gray-500">Scan with Google Authenticator, Authy, or similar</p>
+                <p className="mt-3 text-sm text-gray-500">Scan with Google Authenticator, Authy, Microsoft Authenticator</p>
               </div>
 
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium text-gray-900">Manual Entry Key</span>
+                  <span className="font-medium text-gray-900 text-sm">Manual Entry Key</span>
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleCopy(setupData.manual_entry_key, -1)}
+                    onClick={() => handleCopy(setupData.manual_entry_key || setupData.secret, -1)}
                   >
                     <Copy className="h-4 w-4 mr-1" />
                     Copy
                   </Button>
                 </div>
-                <code className="text-sm font-mono text-gray-700 break-all bg-white px-3 py-2 rounded border">
-                  {setupData.manual_entry_key}
+                <code className="text-sm font-mono text-gray-700 break-all bg-white px-3 py-2 rounded border block">
+                  {setupData.manual_entry_key || setupData.secret}
                 </code>
               </div>
+
+              {demoOtp && (
+                <div className="p-3.5 bg-blue-50/80 rounded-xl border border-blue-200 text-left space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-900">
+                      <Sparkles className="h-4 w-4 text-blue-600" />
+                      Live Authenticator Simulator / Quick-Fill
+                    </div>
+                    <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                      New in {timeRemaining}s
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-blue-100 shadow-sm">
+                    <div className="font-mono text-xl tracking-widest font-bold text-gray-800">
+                      {demoOtp.code}
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="text-xs h-8 border-blue-300 text-blue-700 hover:bg-blue-50"
+                      onClick={() => {
+                        setVerificationCode(demoOtp.code);
+                        toast.success('Live OTP code auto-filled!');
+                      }}
+                    >
+                      Auto-Fill Code
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
